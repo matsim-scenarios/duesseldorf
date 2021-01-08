@@ -11,7 +11,6 @@ import org.matsim.counts.Count;
 import org.matsim.counts.Counts;
 import org.matsim.counts.CountsWriter;
 import picocli.CommandLine;
-
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -45,23 +44,23 @@ public class CreateCityCounts implements Callable<Integer> {
 	private final Map<String, Id<Link>> mapping = new HashMap<>();
 
 	@CommandLine.Option(names = {"--mapping"}, description = "Path to map matching csv file",
-			//defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/original-data/city-counts-node-matching.csv")
-			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/original-data/city-counts-node-matching.csv")
+			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/original-data/city-counts-node-matching.csv")
+//			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/original-data/city-counts-node-matching.csv")
 	private Path mappingInput;
 
 	@CommandLine.Option(names = {"--input"}, description = "Input folder with zip files",
-			//defaultValue = "../../shared-svn/komodnext/data/counts")
-			defaultValue = "../../svn-projects/komodnext/data/counts")
+			defaultValue = "../../shared-svn/komodnext/data/counts")
+//			defaultValue = "../../svn-projects/komodnext/data/counts")
 	private Path input;
 
 	@CommandLine.Option(names = {"--output"}, description = "Output counts.xml.gz",
-//			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/matsim-input-files/counts-city.xml.gz")
-			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/matsim-input-files/counts-city.xml.gz")
+			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/matsim-input-files/counts-city.xml.gz")
+//			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/matsim-input-files/counts-city.xml.gz")
 	private String output;
 
 	@CommandLine.Option(names = {"--summaryOutput"}, description = "Short summary file summary.txt",
-//			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/matsim-input-files/counts-city.xml.gz")
-			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/matsim-input-files/counts-city-log-summary.txt")
+			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/matsim-input-files/counts-city-log-summary.txt")
+//			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/matsim-input-files/counts-city-log-summary.txt")
 	private String summaryOutput;
 
 	public static void main(String[] args) {
