@@ -12,9 +12,7 @@ import org.matsim.counts.Counts;
 import org.matsim.counts.CountsWriter;
 import picocli.CommandLine;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,6 +25,8 @@ import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import static org.apache.commons.lang3.StringUtils.countMatches;
+
 @CommandLine.Command(
 		name = "createCityCounts",
 		description = "Aggregate and convert counts from inner city"
@@ -37,23 +37,34 @@ public class CreateCityCounts implements Callable<Integer> {
 
 	private final Set<String> allStations = new HashSet<>();
 
+	private List<String> infoSummary = new ArrayList<>();
+
 	/**
 	 * Map station name to link id.
 	 */
 	private final Map<String, Id<Link>> mapping = new HashMap<>();
 
 	@CommandLine.Option(names = {"--mapping"}, description = "Path to map matching csv file",
-			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/original-data/city-counts-node-matching.csv")
+			//defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/original-data/city-counts-node-matching.csv")
+			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/original-data/city-counts-node-matching.csv")
 	private Path mappingInput;
 
-	@CommandLine.Option(names = {"--input"}, description = "Input folder with zip files", defaultValue = "../../shared-svn/komodnext/data/counts")
+	@CommandLine.Option(names = {"--input"}, description = "Input folder with zip files",
+			//defaultValue = "../../shared-svn/komodnext/data/counts")
+			defaultValue = "../../svn-projects/komodnext/data/counts")
 	private Path input;
 
 	@CommandLine.Option(names = {"--output"}, description = "Output counts.xml.gz",
-			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/matsim-input-files/counts-city.xml.gz")
+//			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/matsim-input-files/counts-city.xml.gz")
+			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/matsim-input-files/counts-city.xml.gz")
 	private String output;
 
-	public static void main(String[] args) throws IOException {
+	@CommandLine.Option(names = {"--summaryOutput"}, description = "Short summary file summary.txt",
+//			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/matsim-input-files/counts-city.xml.gz")
+			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/matsim-input-files/counts-city-log-summary.txt")
+	private String summaryOutput;
+
+	public static void main(String[] args) {
 		System.exit(new CommandLine(new CreateCityCounts()).execute(args));
 	}
 
@@ -69,6 +80,8 @@ public class CreateCityCounts implements Callable<Integer> {
 			log.error("Mapping {} does not exist.", mappingInput);
 			return 1;
 		}
+
+		infoSummary.add("###### Start log ######");
 
 		readMapping(mappingInput);
 
@@ -92,12 +105,35 @@ public class CreateCityCounts implements Callable<Integer> {
 			log.info("**********************************************************************************************************************************");
 		}
 
-		//TODO: Delete empty counts
-
 		Counts<Link> finalCounts = aggregateCounts(collect);
 		finalCounts.setYear(2019);
+		infoSummary.add("\n#### Summary ####\n");
+
 		new CountsWriter(finalCounts).write(output);
 
+		// Count issues/errors and write them into log file
+		try{
+			FileWriter fileWriter = new FileWriter(summaryOutput);
+			BufferedWriter writer = new BufferedWriter(fileWriter);
+			infoSummary = infoSummary.stream().sorted().collect(Collectors.toList());
+			for (String msg : infoSummary) {
+				writer.write(msg);
+				writer.newLine();
+			}
+			writer.write("#### "+finalCounts.getCounts().size()+" valid sections has been added to final counts list ####"); writer.newLine();
+			writer.write("#### "+ countMatches(infoSummary.toString(),"No mapping for station") +" stationIDs were not being considered because there was no mapping for this station ####"); writer.newLine();
+			List<String> months = Arrays.asList("(01)", "(02)", "(03)", "(04)", "(05)", "(06)", "(07)", "(08)", "(09)", "(10)", "(11)", "(12)");
+			for(String mm : months) {
+				writer.write("## " + countMatches(infoSummary.toString(),mm) + " stationIDs had no mapping in zip folder "+mm+" ##");
+				writer.newLine();
+			}
+			writer.write("#### " + countMatches(infoSummary.toString(),"because all values in 'processed_all_vol'") + " stationIDs were removed from 'allstations' because all their values in 'processed_all_vol' were 0.0 ####"); writer.newLine();
+			writer.write("#### " + countMatches(infoSummary.toString(),"Null pointer error doing averageCounts") + " null pointer errors occurred, because stationId or getVolume.getValue resulted 'null'  ####"); writer.newLine();
+//			writer.write("###### End log ######");
+			writer.close();
+		}catch (IOException ee) {
+			throw new RuntimeException(ee);
+		}
 		return 0;
 	}
 
@@ -110,16 +146,18 @@ public class CreateCityCounts implements Callable<Integer> {
 
 			CSVParser csv = new CSVParser(in, CSVFormat.DEFAULT.withFirstRecordAsHeader().withDelimiter(';'));
 			for (CSVRecord record : csv) {
-				mapping.put(record.get(0), Id.createLinkId(record.get("Link-Id")));
+				mapping.put(record.get(0), Id.createLinkId(record.get("Link-Id")));		// is this Link-Id or stationId? -> link-Id
 			}
 		}
 	}
+
 
 	/**
 	 * Read one month of count data from for all sensors for zip file.
 	 */
 	private Counts<Link> readCounts(Path zip) {
 
+//		infoLog.add("#### Enter readCounts ####");
 		Counts<Link> counts = new Counts<>();
 		counts.setYear(2019);
 		String monthNumber = zip.getFileName().toString().split("-")[0];
@@ -132,31 +170,39 @@ public class CreateCityCounts implements Callable<Integer> {
 				if (entry.isDirectory())
 					continue;
 
-				// TODO: catch exception
-				String stationId = entry.getName().split("_")[2];
-				stationId = stationId.substring(0, stationId.length() - 4);
+				try {
+					String stationId = entry.getName().split("_")[2];
+					stationId = stationId.substring(0, stationId.length() - 4);
 
-				allStations.add(stationId);
+//				allStations.add(stationId);  brought to else-statement to add only stations which are mapped (djp)
 
-				if (!mapping.containsKey(stationId))
-					log.warn("No mapping for station {}", stationId);
-
-				else {
-					Id<Link> linkId = Id.createLinkId(stationId);
-					Count<Link> count;
-					if (counts.getCounts().containsKey(linkId)) {
-						count = counts.getCount(linkId);
-					} else {
-						count = counts.createAndAddCount(linkId, stationId);
+					if (!mapping.containsKey(stationId)) {
+						log.warn("No mapping for station {}", stationId);
+						infoSummary.add("No mapping for station { "+ stationId + " } from (" + monthNumber + ") - will not be considered for counts");
 					}
 
-					readCsvCounts(in, count);
-					log.info("Finished reading {}", entry.getName());
+					else {
+						allStations.add(stationId);
+						Id<Link> linkId = Id.createLinkId(mapping.get(stationId));
+						Count<Link> count;
+						if (counts.getCounts().containsKey(linkId)) {
+							count = counts.getCount(linkId);
+						} else {
+							count = counts.createAndAddCount(linkId, stationId);
+						}
+
+						readCsvCounts(in, count);
+						log.info("Finished reading {}", entry.getName());
+					}
+				} catch (ArrayIndexOutOfBoundsException e){
+					log.warn("Array error! Could not parse stationId from file {}", entry, e);
+					infoSummary.add("Array error or could not find stationId in this file { "+ entry + " }");
 				}
 
 			}
 		} catch (IOException e) {
 			log.error("Could not read zip file {}", zip, e);
+			infoSummary.add("Could not read zip file "+ zip +" from /" + monthNumber);
 		}
 
 		return counts;
@@ -169,13 +215,15 @@ public class CreateCityCounts implements Callable<Integer> {
 	 */
 	private void readCsvCounts(InputStream in, Count<Link> count) throws IOException {
 
+//		infoLog.add("#### Enter readCsvCounts ####");
+
 		Map<Integer, List<Double>> tempCountSum = new HashMap<>();
-		Map<String, Count<Link>> result = new HashMap<>();
+
 		List<String> holidays2019 = Arrays.asList("01.01.2019", "19.04.2019", "22.04.2019", "01.05.2019",
 				"30.05.2019", "10.06.2019", "20.06.2019", "03.10.2019", "01.11.2019", "25.12.2019",
 				"26.12.2019");
 		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy");
-		List<Integer> weekendDaysList = Arrays.asList(1, 5, 6, 7);
+		List<Integer> weekendDaysList = Arrays.asList(1, 5, 6, 7);		// todo: maybe reason for missing counts?
 		Double countMean;
 		double sum = 0D;
 
@@ -197,7 +245,11 @@ public class CreateCityCounts implements Callable<Integer> {
 
 		if (sum == 0) {
 
-			allStations.remove(count.getId().toString());
+//			allStations.remove(count.getId().toString());
+			allStations.remove(count);
+			if(!infoSummary.contains("Remove station { "+ count.getCsLabel() +" } from list because all values in 'processed_all_vol' = " + sum)) {
+				infoSummary.add("Remove station { "+ count.getCsLabel() +" } from list because all values in 'processed_all_vol' = " + sum);
+			}
 
 		} else {
 
@@ -208,7 +260,6 @@ public class CreateCityCounts implements Callable<Integer> {
 				}
 				countMean = countMean / (meanCounts.getValue().size());
 
-				// TODO: add volumes if already existing
 				int key = meanCounts.getKey() + 1;
 				if (count.getVolumes().containsKey(key))
 					count.createVolume(key, count.getVolume(key).getValue() + countMean);
@@ -225,32 +276,68 @@ public class CreateCityCounts implements Callable<Integer> {
 
 	private Counts<Link> aggregateCounts(Map<String, Counts<Link>> collect) {
 
+//		infoSummary.add("#### Enter aggregateCounts ####");
+
 		Counts<Link> counts = new Counts<>();
 		double[] averageCounts;
 
 		// all stations
-		for (String id : allStations) {
-
+		for (String name : allStations) {
+			Id<Link> refLink = Id.createLinkId(mapping.get(name));
 			averageCounts = new double[]{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-			// each month
-			for (Map.Entry<String, Counts<Link>> countMap : collect.entrySet()) {
+			ArrayList<Count<Link>> sectionList = new ArrayList<>();
 
+			if(!counts.getCounts().containsKey(refLink)) {
+				counts.createAndAddCount(refLink, name.substring(0,12));
+				for(String station : allStations){
+					if (station.contains(name.substring(0, 12))) {
+						for(int mm = 0; mm < 12; mm++) {
+							sectionList.add(collect.get(String.format("%02d", mm+1)).getCount(refLink));
+						}
+					}
+				}
+				System.out.println("Section "+name.substring(0,12)+" has "+sectionList.size()/12 +" station elements!");
+				infoSummary.add("Stations added to section " + name.substring(0,12) + " : " + sectionList.size()/12);
+
+				// Hourly average per "section"
 				for (int i = 0; i < 24; i++) {
-
-					averageCounts[i] = averageCounts[i] + countMap.getValue().getCount(Id.createLinkId(id)).getVolume(i + 1).getValue();
+					for (Count<Link> eachCount : sectionList) {
+							try {
+								averageCounts[i] = averageCounts[i] + eachCount.getVolume(i+1).getValue();
+							} catch (NullPointerException e) {
+								log.warn("Null Pointer error! Could not do averageCounts in entry {}", eachCount, name);
+//								Detailed messages (for which hour error occurred)
+//								if(!infoLog.contains("Null pointer error doing averageCounts for station { " + name + " } at iter " + i + "/23 [0-23]")) {
+//									infoLog.add("Null pointer error doing averageCounts for station { " + name + " } at iter " + i + "/23 [0-23]");
+//								}
+								if(!infoSummary.contains("Null pointer error doing averageCounts for station { " + name + " } at least once")) {
+									infoSummary.add("Null pointer error doing averageCounts for station { " + name + " } at least once");
+								}
+							}
+					}
+				}
+				double checksum = 0;
+				for (int i = 0; i < 24; i++) {
+					averageCounts[i] = averageCounts[i] / 12;
+					counts.getCount(refLink).createVolume(i + 1, averageCounts[i]);
+					checksum = checksum + counts.getCount(refLink).getVolume(i+1).getValue();
+				}
+				if(checksum==0){
+					infoSummary.add("Remove station { " + name + " } from list because averageCounts = " + Arrays.toString(averageCounts));
+					counts.getCounts().remove(refLink);
+					System.out.println("ID deleted: " + name + " (Link-Id: "+refLink+")\t" + Arrays.toString(averageCounts));
 
 				}
+				else{
+					System.out.println("ID: " + name + " (Link-Id: "+refLink+")\t" + Arrays.toString(averageCounts));
+					infoSummary.add("Valid section { " + name.substring(0,12) + " } has averageCounts = " + Arrays.toString(averageCounts));
+				}
 			}
-
-			for (int i = 0; i < 24; i++) {
-				averageCounts[i] = averageCounts[i] / 12;
-			}
-
-			System.out.println("ID: " + id + "\t" + Arrays.toString(averageCounts));
-
+			System.out.println("Total: "+counts.getCounts().size()+" sections counted!");
 		}
 
+		counts.setName(Integer.toString(counts.getYear()));
 		return counts;
 
 	}
