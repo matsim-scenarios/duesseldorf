@@ -402,7 +402,7 @@ public class CreateCityCounts implements Callable<Integer> {
 							averageCounts[hh] = averageCounts[hh] / validMonths;
 							counts.getCount(refLink).createVolume(hh + 1, averageCounts[hh]);
 							checksum = checksum + counts.getCount(refLink).getVolume(hh + 1).getValue();
-							infoSummary.add("[contrib.info] Sum of Section " + name.substring(0,12) + " at " + String.format("%02d", hh + 1) + ":XX has divisor: " + validMonths + " | And counting stations per month: " + Arrays.toString(contribCounts[hh]));
+							infoSummary.add("[contrib.info] Sum of Section " + name.substring(0,12) + " at " + String.format("%02d", hh) + ":XX has divisor: " + validMonths + " | And counting stations per month: " + Arrays.toString(contribCounts[hh]));
 							log.info("[ {} ] Contributing stations at {}:XX in section {} (divisor: {} ) with averageCounts = {}", contribCounts[hh], hh, name.substring(0, 12), validMonths, Arrays.toString(averageCounts));
 						}
 					}
