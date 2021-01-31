@@ -376,10 +376,10 @@ public class CreateCityCounts implements Callable<Integer> {
 //									 infoSummary.add("ADDED Count " + collect.get(String.format("%02d", mm + 1)).getCount(refLink) + " from " + mm);
 								} else if (collect.get(String.format("%02d", mm+1)).getCounts().containsValue(selectedCount)){
 									log.info("File {} not found in [{} 2019]", selectedCount, mm+1);
-									infoSummary.add("[no file] " + selectedCount.getCsLabel() + " refLink (" + refLink + " not in folder [" + String.format("%02d", mm + 1) + " 2019]");
+									infoSummary.add("[no file] " + selectedCount.getCsLabel() + " refLink (" + refLink + ") not in folder [" + String.format("%02d", mm + 1) + " 2019]");
 								} else {
 									log.info("Count {} from {} has 0 valid volumes!!", selectedCount, mm+1);
-									infoSummary.add("[no.vol=0] " + selectedCount.getCsLabel() + " refLink (" + refLink + ") from " + String.format("%02d", mm + 1));
+									infoSummary.add("[no.vol=0] " + selectedCount.getCsLabel() + " refLink (" + refLink + ") from " + String.format("%02d", mm + 1) + " 2019 has 0 valid volumes!");
 								}
 							}
 						}
