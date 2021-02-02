@@ -38,6 +38,8 @@ public class CreateCityCounts implements Callable<Integer> {
 
 	private List<String> infoSummary = new ArrayList<>();
 
+
+
 	/**
 	 * Map station name to link id.
 	 */
@@ -50,23 +52,23 @@ public class CreateCityCounts implements Callable<Integer> {
 	private String problemMonth;
 
 	@CommandLine.Option(names = {"--mapping"}, description = "Path to map matching csv file",
-			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/original-data/city-counts-node-matching.csv")
-//			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/original-data/city-counts-node-matching.csv")
+//			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/original-data/city-counts-node-matching.csv")
+			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/original-data/city-counts-node-matching.csv")
 	private Path mappingInput;
 
 	@CommandLine.Option(names = {"--input"}, description = "Input folder with zip files",
-			defaultValue = "../../shared-svn/komodnext/data/counts")
-//			defaultValue = "../../svn-projects/komodnext/data/counts")
+//			defaultValue = "../../shared-svn/komodnext/data/counts")
+			defaultValue = "../../svn-projects/komodnext/data/counts")
 	private Path input;
 
 	@CommandLine.Option(names = {"--output"}, description = "Output counts.xml.gz",
-			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/matsim-input-files/counts-city.xml.gz")
-//			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/matsim-input-files/counts-city_2div.xml.gz")
+//			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/matsim-input-files/counts-city.xml.gz")
+			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/matsim-input-files/counts-city.xml.gz")
 	private String output;
 
 	@CommandLine.Option(names = {"--summaryOutput"}, description = "Short summary file summary.txt",
-			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/matsim-input-files/counts-city-log-summary.txt")
-//			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/matsim-input-files/counts-city-log-summary_2div.txt")
+//			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/matsim-input-files/counts-city-log-summary.txt")
+			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/matsim-input-files/counts-city-log-summary.txt")
 	private String summaryOutput;
 
 	public static void main(String[] args) {
@@ -354,32 +356,40 @@ public class CreateCityCounts implements Callable<Integer> {
 						if (station.contains(name.substring(0, 12))) {
 							for (int mm = 0; mm < 12; mm++) {
 								selectedCount = collect.get(String.format("%02d", mm + 1)).getCount(refLink);
-								if(selectedCount.getVolumes().size() != 0) {
-									sectionList.add(selectedCount);
-									for (int hh = 0; hh < 24; hh++) {
-										try {
-											// Sum of average counts from all stations belonging to a section, seperated by hour
-											averageCounts[hh] = averageCounts[hh] + selectedCount.getVolume(hh + 1).getValue();
-											contribCounts[hh][mm]++;
-										} catch (NullPointerException e) {
-											log.warn("Null Pointer error! Could not do averageCounts at {} in entry {}", hh, selectedCount);
+								if (selectedCount == null) {
+									log.warn("CHECK station! {} AND {}", selectedCount, station);
+								}
+								// need to pre-select not existing stations in folder (avoids empty counts, which have counts due to null ptr exception)
+								if (selectedCount != null) {
+									if (selectedCount.getVolumes().size() != 0) {
+										sectionList.add(selectedCount);
+										for (int hh = 0; hh < 24; hh++) {
+											try {
+												// Sum of average counts from all stations belonging to a section, seperated by hour
+												averageCounts[hh] = averageCounts[hh] + selectedCount.getVolume(hh + 1).getValue();
+												contribCounts[hh][mm]++;
+											} catch (NullPointerException e) {
+												log.warn("Null Pointer error! Could not do averageCounts at {} in entry {}", hh, selectedCount);
 //								Detailed messages (for which hour error occurred)
 //								if(!infoLog.contains("Null pointer error doing averageCounts for station { " + name + " } at iter " + i + "/23 [0-23]")) {
 //									infoLog.add("Null pointer error doing averageCounts for station { " + name + " } at iter " + i + "/23 [0-23]");
 //								}
-											if (!infoSummary.contains("[![3]!] Null pointer error doing averageCounts for station { " + name + " } at least once")) {
-												infoSummary.add("[![3]!] Null pointer error doing averageCounts for station { " + name + " } at least once");
+												if (!infoSummary.contains("[![3]!] Null pointer error doing averageCounts for station { " + name + " } at least once")) {
+													infoSummary.add("[![3]!] Null pointer error doing averageCounts for station { " + name + " } at least once");
+												}
 											}
 										}
-									}
 //									 for troubleshoot
 //									 infoSummary.add("ADDED Count " + collect.get(String.format("%02d", mm + 1)).getCount(refLink) + " from " + mm);
-								} else if (collect.get(String.format("%02d", mm+1)).getCounts().containsValue(selectedCount)){
-									log.info("File {} not found in [{} 2019]", selectedCount, mm+1);
-									infoSummary.add("[no file] " + selectedCount.getCsLabel() + " refLink (" + refLink + ") not in folder [" + String.format("%02d", mm + 1) + " 2019]");
+									} else if (collect.get(String.format("%02d", mm + 1)).getCounts().containsValue(selectedCount)) {
+										log.info("File {} not found in [{} 2019]", selectedCount, mm + 1);
+										infoSummary.add("[no file] " + selectedCount.getCsLabel() + " refLink (" + refLink + ") not in folder [" + String.format("%02d", mm + 1) + " 2019]");
+									} else {
+										log.info("Count {} from {} has 0 valid volumes!!", selectedCount, mm + 1);
+										infoSummary.add("[no.vol=0] " + selectedCount.getCsLabel() + " refLink (" + refLink + ") from " + String.format("%02d", mm + 1) + " 2019 has 0 valid volumes!");
+									}
 								} else {
-									log.info("Count {} from {} has 0 valid volumes!!", selectedCount, mm+1);
-									infoSummary.add("[no.vol=0] " + selectedCount.getCsLabel() + " refLink (" + refLink + ") from " + String.format("%02d", mm + 1) + " 2019 has 0 valid volumes!");
+									log.info("Count from {} is null!!", mm + 1);
 								}
 							}
 						}
