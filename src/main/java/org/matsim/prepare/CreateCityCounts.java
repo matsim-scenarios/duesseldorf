@@ -61,14 +61,18 @@ public class CreateCityCounts implements Callable<Integer> {
 			defaultValue = "../../svn-projects/komodnext/data/counts")
 	private Path input;
 
+	@CommandLine.Option(names = {"--column"}, description = "Processed column from count csv",
+			defaultValue = "processed_car_vol")
+	private String column;
+
 	@CommandLine.Option(names = {"--output"}, description = "Output counts.xml.gz",
-//			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/matsim-input-files/counts-city.xml.gz")
-			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/matsim-input-files/counts-city.xml.gz")
+//			defaultValue = "../../shared-svn/projects/matsim-duesseldorf/input-files/counts-city.xml.gz")
+			defaultValue = "../../svn-projects/matsim-duesseldorf/input-files/car-counts-city.xml.gz")
 	private String output;
 
 	@CommandLine.Option(names = {"--summaryOutput"}, description = "Short summary file summary.txt",
-//			defaultValue = "../public-svn/matsim/scenarios/countries/de/duesseldorf/duesseldorf-v1.0/matsim-input-files/counts-city-log-summary.txt")
-			defaultValue = "../../svn-projects/duesseldorf-network/duesseldorf-v1.0/matsim-input-files/counts-city-log-summary.txt")
+//			defaultValue = "../../shared-svn/projects/matsim-duesseldorf/input-files/counts-city-log-summary.txt")
+			defaultValue = "../../svn-projects/matsim-duesseldorf/input-files/car-counts-city-log-summary.txt")
 	private String summaryOutput;
 
 	public static void main(String[] args) {
@@ -291,7 +295,7 @@ public class CreateCityCounts implements Callable<Integer> {
 			if (!isWeekend(LocalDate.parse(record.get("Time").split(" ")[0], formatter), weekendDaysList) || !holidays2019.contains(record.get("Time").split(" ")[0])) {
 
 				Integer hour = Integer.parseInt(record.get("Time").split(" ")[1].split(":")[0]);
-				double value = Double.parseDouble(record.get("processed_all_vol").replaceAll(",", "."));
+				double value = Double.parseDouble(record.get(column).replaceAll(",", "."));
 				tempCountSum.computeIfAbsent(hour, k -> new ArrayList<>()).add(value);
 				sum += value;
 			}
@@ -301,14 +305,14 @@ public class CreateCityCounts implements Callable<Integer> {
 //			allStations.remove(count.getId().toString());
 //			mapping.remove(count.getId());
 			allStations.remove(count.getCsLabel());
-			infoSummary.add("[Remove] { " + count.getCsLabel() + " } - all values in 'processed_all_vol' = " + sum);
+			infoSummary.add(String.format("[Remove] { %s } - all values in '%s' = %f", count.getCsLabel(), column, sum));
 
 		} else if (sum == 0 && isProblemCount){
 			log.warn("Station {} from {} has no mapping and no counts ", count.getCsLabel(), problemMonth);
-			infoSummary.add("[NO mapping NO counts] Station { " + count.getCsLabel() + " } from (" + problemMonth + ") will not be considered for counts");
+			infoSummary.add(String.format("[NO mapping NO counts] Station { %s } from (%s) will not be considered for counts", count.getCsLabel(), problemMonth));
 		} else if (isProblemCount){
 			log.warn("Station {} from {} has no mapping but has counts! ", count.getCsLabel(), problemMonth);
-			infoSummary.add("[NO mapping BUT counts] Station { " + count.getCsLabel() + " } from (" + problemMonth + ") will not be considered for counts");
+			infoSummary.add(String.format("[NO mapping BUT counts] Station { %s } from (%s) will not be considered for counts", count.getCsLabel(), problemMonth));
 		} else {
 			for (Map.Entry<Integer, List<Double>> meanCounts : tempCountSum.entrySet()) {
 				countMean = 0.0;
@@ -353,11 +357,12 @@ public class CreateCityCounts implements Callable<Integer> {
 				if (!counts.getCounts().containsKey(refLink)) {
 					counts.createAndAddCount(refLink, name.substring(0, 12));
 					for (String station : allStations) {
-						if (station.contains(name.substring(0, 12))) {
+//						if (station.contains(name.substring(0, 12))) {
+						if (station.contains(name.substring(0, 12)) && station!= name ) {
 							for (int mm = 0; mm < 12; mm++) {
 								selectedCount = collect.get(String.format("%02d", mm + 1)).getCount(refLink);
 								if (selectedCount == null) {
-									log.warn("CHECK station! {} AND {}", selectedCount, station);
+									log.warn("CHECK \"null\" station! Section: {}", station);
 								}
 								// need to pre-select not existing stations in folder (avoids empty counts, which have counts due to null ptr exception)
 								if (selectedCount != null) {
@@ -438,5 +443,7 @@ public class CreateCityCounts implements Callable<Integer> {
 		return counts;
 
 	}
+
+//	private boolean checkSectionCounts(Count<Link> checkStation, int month)
 
 }
