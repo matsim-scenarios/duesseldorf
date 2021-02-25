@@ -1,4 +1,4 @@
-package org.matsim.analyze;
+package org.matsim.analysis;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
@@ -24,12 +24,10 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.Callable;
 
-/**
- * TODO: documentation
- */
+
 @CommandLine.Command(
         name = "analyzeTakeovers",
-        description = "TODO"
+        description = "Analyze takeover of vehicles on one link, but different lanes."
 )
 public class AnalyzeTakeovers implements Callable<Integer>, LinkEnterEventHandler, LinkLeaveEventHandler, LaneEnterEventHandler, LaneLeaveEventHandler {
 

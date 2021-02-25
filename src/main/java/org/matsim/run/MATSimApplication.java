@@ -7,7 +7,6 @@ import org.matsim.core.config.ConfigGroup;
 import org.matsim.core.config.ConfigUtils;
 import org.matsim.core.config.groups.ControlerConfigGroup;
 import org.matsim.core.config.groups.GlobalConfigGroup;
-import org.matsim.core.config.groups.PlanCalcScoreConfigGroup;
 import org.matsim.core.config.groups.QSimConfigGroup;
 import org.matsim.core.controler.Controler;
 import org.matsim.core.scenario.ScenarioUtils;
@@ -22,8 +21,11 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.lang.reflect.Field;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * A helper class to execute MATSim scenarios. This class provides a common scenario setup procedure and command line parsing.
@@ -37,281 +39,410 @@ import java.util.concurrent.Callable;
  * This class also automatically registers classes from the {@link Prepare} annotation as subcommands.
  */
 @CommandLine.Command(
-        name = MATSimApplication.DEFAULT_NAME,
-        description = {"", "If no subcommand is specified, this will run the scenario using the CONFIG"},
-        headerHeading = MATSimApplication.HEADER,
-        parameterListHeading = "%n@|bold,underline Parameters:|@%n",
-        optionListHeading = "%n@|bold,underline Options:|@%n",
-        commandListHeading = "%n@|bold,underline Commands:|@%n",
-        footerHeading = "\n",
-        footer = "@|cyan If you would like to contribute or report an issue please go to https://github.com/matsim-org.|@",
-        usageHelpWidth = 120,
-        usageHelpAutoWidth = true,
-        showDefaultValues = true,
-        mixinStandardHelpOptions = true,
-        abbreviateSynopsis = true,
-        subcommands = {CommandLine.HelpCommand.class, AutoComplete.GenerateCompletion.class, ShowGUI.class}
+		name = MATSimApplication.DEFAULT_NAME,
+		description = {"", "If no subcommand is specified, this will run the scenario using the CONFIG"},
+		headerHeading = MATSimApplication.HEADER,
+		parameterListHeading = "%n@|bold,underline Parameters:|@%n",
+		optionListHeading = "%n@|bold,underline Options:|@%n",
+		commandListHeading = "%n@|bold,underline Commands:|@%n",
+		footerHeading = "\n",
+		footer = "@|cyan If you would like to contribute or report an issue please go to https://github.com/matsim-org.|@",
+		usageHelpWidth = 120,
+		usageHelpAutoWidth = true,
+		showDefaultValues = true,
+		mixinStandardHelpOptions = true,
+		abbreviateSynopsis = true,
+		subcommands = {CommandLine.HelpCommand.class, AutoComplete.GenerateCompletion.class, ShowGUI.class}
 )
 public class MATSimApplication implements Callable<Integer>, CommandLine.IDefaultValueProvider {
 
-    public static final String DEFAULT_NAME = "MATSimApplication";
-    public static final String COLOR = "@|bold,fg(81) ";
-    public static final String HEADER = COLOR +
-            "  __  __   _ _____ ___ _       \n" +
-            " |  \\/  | /_\\_   _/ __(_)_ __  \n" +
-            " | |\\/| |/ _ \\| | \\__ \\ | '  \\ \n" +
-            " |_|  |_/_/ \\_\\_| |___/_|_|_|_|\n|@";
+	public static final String DEFAULT_NAME = "MATSimApplication";
+	public static final String COLOR = "@|bold,fg(81) ";
+	public static final String HEADER = COLOR +
+			"  __  __   _ _____ ___ _       \n" +
+			" |  \\/  | /_\\_   _/ __(_)_ __  \n" +
+			" | |\\/| |/ _ \\| | \\__ \\ | '  \\ \n" +
+			" |_|  |_/_/ \\_\\_| |___/_|_|_|_|\n|@";
 
-    @CommandLine.Parameters(arity = "1", paramLabel = "CONFIG", description = "Scenario config used for the run.")
-    protected File scenario;
+	@CommandLine.Parameters(arity = "0..1", paramLabel = "CONFIG", description = "Scenario config used for the run.")
+	protected File scenario;
 
-    @CommandLine.Option(names = "--iterations", description = "Overwrite number of iterations (if greater than 0).", defaultValue = "0")
-    protected int iterations;
+	@CommandLine.Option(names = "--iterations", description = "Overwrite number of iterations (if greater than 0).", defaultValue = "0")
+	protected int iterations;
 
-    /**
-     * Path to the default scenario config, if applicable.
-     */
-    @Nullable
-    protected final String defaultScenario;
+	/**
+	 * Path to the default scenario config, if applicable.
+	 */
+	@Nullable
+	protected final String defaultScenario;
 
-    /**
-     * Constructor for an application without a default scenario path.
-     */
-    public MATSimApplication() {
-        defaultScenario = null;
-    }
+	/**
+	 * Contains loaded config file.
+	 */
+	@Nullable
+	private Config config;
 
-    /**
-     * Constructor
-     *
-     * @param defaultScenario path to the default scenario config
-     */
-    public MATSimApplication(@Nullable String defaultScenario) {
-        this.defaultScenario = defaultScenario;
-    }
+	/**
+	 * Constructor for an application without a default scenario path.
+	 */
+	public MATSimApplication() {
+		defaultScenario = null;
+	}
 
-    /**
-     * The main scenario setup procedure.
-     *
-     * @return return code
-     */
-    @Override
-    public Integer call() throws Exception {
+	/**
+	 * Constructor
+	 *
+	 * @param defaultScenario path to the default scenario config
+	 */
+	public MATSimApplication(@Nullable String defaultScenario) {
+		this.defaultScenario = defaultScenario;
+	}
 
-        Config config = loadConfig(scenario.getAbsolutePath());
+	/**
+	 * Constructor for given config, that can be used from code.
+	 */
+	public MATSimApplication(@Nullable Config config) {
+		this.config = config;
+		this.defaultScenario = "<config from code>";
+	}
 
-        Objects.requireNonNull(config);
+	/**
+	 * The main scenario setup procedure.
+	 *
+	 * @return return code
+	 */
+	@Override
+	public Integer call() throws Exception {
 
-        final Scenario scenario = ScenarioUtils.loadScenario(config);
+		// load config if not present yet.
+		if (config == null) {
+			config = loadConfig(scenario.getAbsolutePath());
+		} else {
+			Config tmp = prepareConfig(config);
+			config = tmp != null ? tmp : config;
+		}
 
-        prepareScenario(scenario);
+		Objects.requireNonNull(config);
 
-        final Controler controler = new Controler(scenario);
+		final Scenario scenario = ScenarioUtils.loadScenario(config);
 
-        prepareControler(controler);
+		prepareScenario(scenario);
 
-        if (iterations > 0)
-            config.controler().setLastIteration(iterations);
+		final Controler controler = new Controler(scenario);
 
-        controler.run();
-        return 0;
-    }
+		prepareControler(controler);
 
+		if (iterations > 0)
+			config.controler().setLastIteration(iterations);
 
-    /**
-     * Custom module configs that will be added to the {@link Config} object.
-     *
-     * @return {@link ConfigGroup} to add
-     */
-    protected List<ConfigGroup> getCustomModules() {
-        return Lists.newArrayList();
-    }
-
-    /**
-     * Modules that are configurable via command line arguments.
-     */
-    private List<ConfigGroup> getConfigurableModules() {
-        return Lists.newArrayList(
-                new ControlerConfigGroup(),
-                new GlobalConfigGroup(),
-                new QSimConfigGroup()
-        );
-    }
-
-    /**
-     * Preparation step for the config.
-     *
-     * @param config initialized config
-     * @return prepared {@link Config}, or null if same as input
-     */
-    protected Config prepareConfig(Config config) {
-        return config;
-    }
-
-    /**
-     * Preparation step for the scenario.
-     */
-    protected void prepareScenario(Scenario scenario) {
-    }
-
-    /**
-     * Preparation step for the controller.
-     */
-    protected void prepareControler(Controler controler) {
-    }
-
-    /**
-     * Adds default activity parameter to the plan score calculation.
-     */
-    protected void addDefaultActivityParams(Config config) {
-        for (long ii = 600; ii <= 97200; ii += 600) {
-            config.planCalcScore().addActivityParams(new PlanCalcScoreConfigGroup.ActivityParams("home_" + ii + ".0").setTypicalDuration(ii));
-            config.planCalcScore().addActivityParams(new PlanCalcScoreConfigGroup.ActivityParams("work_" + ii + ".0").setTypicalDuration(ii).setOpeningTime(6. * 3600.).setClosingTime(20. * 3600.));
-            config.planCalcScore().addActivityParams(new PlanCalcScoreConfigGroup.ActivityParams("leisure_" + ii + ".0").setTypicalDuration(ii).setOpeningTime(9. * 3600.).setClosingTime(27. * 3600.));
-            config.planCalcScore().addActivityParams(new PlanCalcScoreConfigGroup.ActivityParams("shopping_" + ii + ".0").setTypicalDuration(ii).setOpeningTime(8. * 3600.).setClosingTime(20. * 3600.));
-            config.planCalcScore().addActivityParams(new PlanCalcScoreConfigGroup.ActivityParams("other_" + ii + ".0").setTypicalDuration(ii));
-        }
-        config.planCalcScore().addActivityParams(new PlanCalcScoreConfigGroup.ActivityParams("freight").setTypicalDuration(12. * 3600.));
-        config.planCalcScore().addActivityParams(new PlanCalcScoreConfigGroup.ActivityParams("car interaction").setTypicalDuration(60));
-    }
+		controler.run();
+		return 0;
+	}
 
 
-    private Config loadConfig(String path) {
-        List<ConfigGroup> customModules = getCustomModules();
+	/**
+	 * Custom module configs that will be added to the {@link Config} object.
+	 *
+	 * @return {@link ConfigGroup} to add
+	 */
+	protected List<ConfigGroup> getCustomModules() {
+		return Lists.newArrayList();
+	}
 
-        final Config config = ConfigUtils.loadConfig(path, customModules.toArray(new ConfigGroup[0]));
-        Config prepared = prepareConfig(config);
+	/**
+	 * Modules that are configurable via command line arguments.
+	 */
+	private List<ConfigGroup> getConfigurableModules() {
+		return Lists.newArrayList(
+				new ControlerConfigGroup(),
+				new GlobalConfigGroup(),
+				new QSimConfigGroup()
+		);
+	}
 
-        return prepared != null ? prepared : config;
-    }
+	/**
+	 * Preparation step for the config.
+	 *
+	 * @param config initialized config
+	 * @return prepared {@link Config}, or null if same as input
+	 */
+	protected Config prepareConfig(Config config) {
+		return config;
+	}
 
-    @Override
-    public String defaultValue(CommandLine.Model.ArgSpec argSpec) throws Exception {
-        Object obj = argSpec.userObject();
-        if (obj instanceof Field) {
-            Field field = (Field) obj;
-            if (field.getName().equals("scenario") && field.getDeclaringClass().equals(MATSimApplication.class)) {
-                return defaultScenario;
-            }
-        }
+	/**
+	 * Preparation step for the scenario.
+	 */
+	protected void prepareScenario(Scenario scenario) {
+	}
 
-        return null;
-    }
+	/**
+	 * Preparation step for the controller.
+	 */
+	protected void prepareControler(Controler controler) {
+	}
 
-    public static void run(Class<? extends MATSimApplication> clazz, String[] args) {
-        MATSimApplication app;
-        try {
-            app = clazz.getConstructor().newInstance();
-        } catch (ReflectiveOperationException e) {
-            System.err.println("Could not instantiate the application class");
-            e.printStackTrace();
-            System.exit(1);
-            return;
-        }
+	/**
+	 * Add and an option and value to run id and output folder.
+	 */
+	protected void addRunOption(Config config, String option, Object value) {
 
-        CommandLine cli = new CommandLine(app);
+		String postfix = "-" + option + "_" + value;
 
-        if (cli.getCommandName().equals(DEFAULT_NAME))
-            cli.setCommandName(clazz.getSimpleName());
+		String outputDir = config.controler().getOutputDirectory();
+		if (outputDir.endsWith("/")) {
+			config.controler().setOutputDirectory(outputDir.substring(0, outputDir.length() - 1) + postfix + "/");
+		} else
+			config.controler().setOutputDirectory(outputDir + postfix);
 
-        setupOptions(cli, app);
+		config.controler().setRunId(config.controler().getRunId() + postfix);
+	}
 
-        if (app.getClass().isAnnotationPresent(Prepare.class))
-            setupSubcommands(cli, app);
+	/**
+	 * Add and an option to run id and output folder, delimited by "_".
+	 */
+	protected void addRunOption(Config config, String option) {
+		addRunOption(config, option, "");
+	}
 
-        List<ConfigGroup> modules = Lists.newArrayList();
-        modules.addAll(app.getConfigurableModules());
-        modules.addAll(app.getCustomModules());
+	private Config loadConfig(String path) {
+		List<ConfigGroup> customModules = getCustomModules();
 
-        // setupConfig(cli, modules);
+		final Config config = ConfigUtils.loadConfig(path, customModules.toArray(new ConfigGroup[0]));
+		Config prepared = prepareConfig(config);
 
-        int code = cli.execute(args);
+		return prepared != null ? prepared : config;
+	}
 
-        // Exit on error codes
-        if (code > 0)
-            System.exit(code);
+	@Override
+	public String defaultValue(CommandLine.Model.ArgSpec argSpec) throws Exception {
+		Object obj = argSpec.userObject();
+		if (obj instanceof Field) {
+			Field field = (Field) obj;
+			if (field.getName().equals("scenario") && field.getDeclaringClass().equals(MATSimApplication.class)) {
+				return defaultScenario;
+			}
+		}
 
-    }
+		return null;
+	}
 
-    private static void setupOptions(CommandLine cli, MATSimApplication app) {
+	/**
+	 * Run A application class.
+	 */
+	public static void run(Class<? extends MATSimApplication> clazz, String[] args) {
+		MATSimApplication app;
+		try {
+			app = clazz.getConstructor().newInstance();
+		} catch (ReflectiveOperationException e) {
+			System.err.println("Could not instantiate the application class");
+			e.printStackTrace();
+			System.exit(1);
+			return;
+		}
 
-        CommandLine.Model.CommandSpec spec = cli.getCommandSpec();
-        String[] header = spec.usageMessage().header();
-        // set formatting for header
-        if (header.length == 1) {
-            spec.usageMessage().header(COLOR + " " + header[0].trim() + "|@%n");
-        }
+		CommandLine cli = prepare(app);
 
-        spec.defaultValueProvider(app);
-    }
+		int code = cli.execute(args);
 
-    /**
-     * Processes the {@link Prepare} annotation and inserts command automatically.
-     */
-    private static void setupSubcommands(CommandLine cli, MATSimApplication app) {
+		// Exit on error codes
+		if (code > 0)
+			System.exit(code);
 
-        Prepare prepare = app.getClass().getAnnotation(Prepare.class);
+	}
 
-        cli.addSubcommand("prepare", new PrepareCommand());
-        CommandLine subcommand = cli.getSubcommands().get("prepare");
+	/**
+	 * Calls an application class and forwards any exceptions.
+	 */
+	public static int call(Class<? extends MATSimApplication> clazz, Config config, String[] args) {
+		MATSimApplication app;
+		try {
+			app = clazz.getConstructor(Config.class).newInstance(config);
+		} catch (ReflectiveOperationException e) {
+			System.err.println("Could not instantiate the application class");
+			throw new RuntimeException(e);
+		}
 
-        for (Class<?> aClass : prepare.value()) {
-            subcommand.addSubcommand(aClass);
-        }
-    }
+		CommandLine cli = prepare(app);
+		AtomicReference<Exception> exc = new AtomicReference<>();
+		cli.setExecutionExceptionHandler((ex, commandLine, parseResult) -> {
+			exc.set(ex);
+			return 2;
+		});
 
-    /**
-     * Inserts modules config into command line, but not used at the moment
-     */
-    private static void setupConfig(CommandLine cli, List<ConfigGroup> modules) {
+		int code = cli.execute(args);
 
-        CommandLine.Model.CommandSpec spec = cli.getCommandSpec();
-        for (ConfigGroup module : modules) {
+		if (code > 0) {
+			Exception e = exc.get();
+			if (e instanceof RuntimeException)
+				throw (RuntimeException) e;
+			else
+				throw new RuntimeException("Application exited with error", e);
 
-            CommandLine.Model.ArgGroupSpec.Builder group = CommandLine.Model.ArgGroupSpec.builder()
-                    .headingKey(module.getName())
-                    .heading(module.getName() + "\n");
+		}
 
-            for (Map.Entry<String, String> param : module.getParams().entrySet()) {
+		return code;
+	}
 
-                // Escape format symbols
-                String desc = module.getComments().get(param.getKey());
-                if (desc != null)
-                    desc = desc.replace("%", "%%");
+	/**
+	 * Prepare and return controller without running the scenario.
+	 * This allows to configure the controller after setup has been run.
+	 */
+	public static Controler prepare(Class<? extends MATSimApplication> clazz, Config config, String[] args) {
 
-                group.addArg(CommandLine.Model.OptionSpec.builder("--" + module.getName() + "-" + param.getKey())
-                        .hideParamSyntax(true)
-                        .hidden(false)
-                        .description((desc != null ? desc + " " : "") + "Default: ${DEFAULT-VALUE}")
-                        .defaultValue(param.getValue())
-                        .build());
+		MATSimApplication app;
+		try {
+			app = clazz.getConstructor(Config.class).newInstance(config);
+		} catch (ReflectiveOperationException e) {
+			System.err.println("Could not instantiate the application class");
+			throw new RuntimeException(e);
+		}
 
-            }
+		CommandLine cli = prepare(app);
+		CommandLine.ParseResult parseResult = cli.parseArgs(args);
 
-            spec.addArgGroup(group.build());
-        }
-    }
+		if (parseResult.errors().size() > 0)
+			throw new RuntimeException(parseResult.errors().get(0));
 
-    @CommandLine.Command(name = "prepare", description = "Contains all commands for preparing the scenario. (See help prepare)")
-    public static class PrepareCommand implements Callable<Integer> {
+		Config tmp = app.prepareConfig(config);
+		config = tmp != null ? tmp : config;
 
-        @CommandLine.Spec
-        private CommandLine.Model.CommandSpec spec;
+		final Scenario scenario = ScenarioUtils.loadScenario(config);
+		app.prepareScenario(scenario);
 
-        @Override
-        public Integer call() throws Exception {
-            System.out.printf("No subcommand given. Chose on of: %s", spec.subcommands().keySet());
-            return 0;
-        }
-    }
+		final Controler controler = new Controler(scenario);
+		app.prepareControler(controler);
 
-    /**
-     * Classes from {@link #value()} will be registered as "prepare" subcommands.
-     */
-    @Retention(RetentionPolicy.RUNTIME)
-    @Target({ElementType.TYPE})
-    public @interface Prepare {
-        Class<?>[] value() default {};
-    }
+		return controler;
+	}
+
+	private static CommandLine prepare(MATSimApplication app) {
+		CommandLine cli = new CommandLine(app);
+
+		if (cli.getCommandName().equals(DEFAULT_NAME))
+			cli.setCommandName(app.getClass().getSimpleName());
+
+		setupOptions(cli, app);
+
+		if (app.getClass().isAnnotationPresent(Prepare.class))
+			setupSubcommands(cli, app);
+
+		List<ConfigGroup> modules = Lists.newArrayList();
+		modules.addAll(app.getConfigurableModules());
+		modules.addAll(app.getCustomModules());
+
+		// setupConfig(cli, modules);
+		return cli;
+	}
+
+	private static void setupOptions(CommandLine cli, MATSimApplication app) {
+
+		CommandLine.Model.CommandSpec spec = cli.getCommandSpec();
+		String[] header = spec.usageMessage().header();
+		// set formatting for header
+		if (header.length == 1) {
+			spec.usageMessage().header(COLOR + " " + header[0].trim() + "|@%n");
+		}
+
+		spec.defaultValueProvider(app);
+	}
+
+	/**
+	 * Processes the {@link Prepare} annotation and inserts command automatically.
+	 */
+	private static void setupSubcommands(CommandLine cli, MATSimApplication app) {
+
+		Prepare prepare = app.getClass().getAnnotation(Prepare.class);
+		cli.addSubcommand("prepare", new PrepareCommand());
+		CommandLine subcommand = cli.getSubcommands().get("prepare");
+
+		for (Class<?> aClass : prepare.value()) {
+			subcommand.addSubcommand(aClass);
+		}
+
+		Analysis analysis = app.getClass().getAnnotation(Analysis.class);
+		cli.addSubcommand("analysis", new AnalysisCommand());
+		subcommand = cli.getSubcommands().get("analysis");
+
+		for (Class<?> aClass : analysis.value()) {
+			subcommand.addSubcommand(aClass);
+		}
+	}
+
+	/**
+	 * Inserts modules config into command line, but not used at the moment
+	 */
+	private static void setupConfig(CommandLine cli, List<ConfigGroup> modules) {
+
+		CommandLine.Model.CommandSpec spec = cli.getCommandSpec();
+		for (ConfigGroup module : modules) {
+
+			CommandLine.Model.ArgGroupSpec.Builder group = CommandLine.Model.ArgGroupSpec.builder()
+					.headingKey(module.getName())
+					.heading(module.getName() + "\n");
+
+			for (Map.Entry<String, String> param : module.getParams().entrySet()) {
+
+				// Escape format symbols
+				String desc = module.getComments().get(param.getKey());
+				if (desc != null)
+					desc = desc.replace("%", "%%");
+
+				group.addArg(CommandLine.Model.OptionSpec.builder("--" + module.getName() + "-" + param.getKey())
+						.hideParamSyntax(true)
+						.hidden(false)
+						.description((desc != null ? desc + " " : "") + "Default: ${DEFAULT-VALUE}")
+						.defaultValue(param.getValue())
+						.build());
+
+			}
+
+			spec.addArgGroup(group.build());
+		}
+	}
+
+	@CommandLine.Command(name = "prepare", description = "Contains all commands for preparing the scenario. (See help prepare)")
+	public static class PrepareCommand implements Callable<Integer> {
+
+		@CommandLine.Spec
+		private CommandLine.Model.CommandSpec spec;
+
+		@Override
+		public Integer call() throws Exception {
+			System.out.printf("No subcommand given. Chose on of: %s", spec.subcommands().keySet());
+			return 0;
+		}
+	}
+
+	@CommandLine.Command(name = "analysis", description = "Contains all commands for analysing the scenario. (See help analysis)")
+	public static class AnalysisCommand implements Callable<Integer> {
+
+		@CommandLine.Spec
+		private CommandLine.Model.CommandSpec spec;
+
+		@Override
+		public Integer call() throws Exception {
+			System.out.printf("No subcommand given. Chose on of: %s", spec.subcommands().keySet());
+			return 0;
+		}
+	}
+
+	/**
+	 * Classes from {@link #value()} will be registered as "prepare" subcommands.
+	 */
+	@Retention(RetentionPolicy.RUNTIME)
+	@Target({ElementType.TYPE})
+	public @interface Prepare {
+		Class<?>[] value() default {};
+	}
+
+	/**
+	 * Classes from {@link #value()} will be registered as "analysis" subcommands.
+	 */
+	@Retention(RetentionPolicy.RUNTIME)
+	@Target({ElementType.TYPE})
+	public @interface Analysis {
+		Class<?>[] value() default {};
+	}
 
 }
