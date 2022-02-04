@@ -155,6 +155,11 @@
             <artifactId>analysis</artifactId>
             <version>${matsim.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.matsim.contrib</groupId>
+            <artifactId>decongestion</artifactId>
+            <version>${matsim.version}</version>
+        </dependency>
 
         <dependency>
             <groupId>com.github.matsim-org</groupId>

@@ -35,6 +35,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.matsim.run.RunDuesseldorfScenario.VERSION;
 import static org.matsim.run.TurnDependentFlowEfficiencyCalculator.ATTR_TURN_EFFICIENCY;
@@ -192,7 +193,7 @@ public final class CreateNetwork implements MATSimAppCommand {
 				"239250010#2", // Brunnenstrasse
 				"30694311#0",
 				"432816762"
-				);
+		);
 
 		//dump it into a set in case we accidentally repeat an id in the list
 		Set<String> incorrect = new HashSet<>();
@@ -274,6 +275,7 @@ public final class CreateNetwork implements MATSimAppCommand {
 
 	/**
 	 * Read link capacities from csv file.
+	 *
 	 * @return pair of from link, to link -> capacity
 	 */
 	public static Object2DoubleMap<Pair<Id<Link>, Id<Link>>> readLinkCapacities(Path input) {
@@ -291,6 +293,32 @@ public final class CreateNetwork implements MATSimAppCommand {
 				Pair<Id<Link>, Id<Link>> key = Pair.of(fromLinkId, toLinkId);
 
 				result.put(key, Double.parseDouble(record.get("flow")));
+
+			}
+
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
+		return result;
+	}
+
+	/**
+	 * Read link corridors  from csv file.
+	 *
+	 * @return pair of from link, to link -> capacity
+	 */
+	public static Map<Id<Link>, Integer> readLinkCorridors(Path input) {
+
+		Map<Id<Link>, Integer> result = new HashMap<>();
+
+		try (CSVParser parser = new CSVParser(IOUtils.getBufferedReader(input.toString()),
+				CSVFormat.DEFAULT.withDelimiter(',').withFirstRecordAsHeader())) {
+
+			for (CSVRecord record : parser) {
+
+				Id<Link> linkId = Id.create(record.get("ID"), Link.class);
+
+				result.put(linkId, Integer.parseInt(record.get("corridor")));
 
 			}
 
@@ -364,6 +392,55 @@ public final class CreateNetwork implements MATSimAppCommand {
 
 
 		propagateJunctionCapacities(network);
+
+		return unmatched;
+	}
+
+	/**
+	 * Use provided link ids and corridor ids and reduce them by one lane, and process the links' per-lane flow
+	 * capacities
+	 * to be at least twice the weighted average across the length of the corridor.
+	 *
+	 * @return number of links from file that are not in the network.
+	 */
+	public static int reduceLinksbyOneLaneAndMultiplyPerLaneCapacity(Network network,
+																	 Map<Id<Link>, Integer> map, double factor, double numberOfLanes) {
+
+		Set<Integer> corridors = new HashSet<>(map.values());
+		int unmatched = 0;
+
+		log.info("Processing {} corridors for lane reduction...", corridors.size());
+		for (Integer corridor : corridors) {
+
+			Set<Link> links = new HashSet<>();
+			map.entrySet().stream().filter(entry -> corridor.equals(entry.getValue())).forEach(entry -> links.add(network.getLinks().get(entry.getKey())));
+			if (links.size() == 0)
+				return map.size();
+			//the idea here would be that the planners would optimise for a corridor, such that low-flow links would
+			// be improved
+			AtomicReference<Double> capLengthPerLane = new AtomicReference<>(0d);
+			AtomicReference<Double> corridorLength = new AtomicReference<>(0d);
+			links.forEach(link -> {
+				capLengthPerLane.accumulateAndGet(link.getCapacity() * link.getLength() / link.getNumberOfLanes(), Double::sum);
+				corridorLength.accumulateAndGet(link.getLength(), Double::sum);
+			});
+			double avgCapPerLane = capLengthPerLane.get() / corridorLength.get();
+			log.info("Corridor {} has an avg. capacity of {} per lane and has total length of {} km.", corridor, avgCapPerLane, corridorLength.get() / 1000d);
+			log.info("Reducing links with more than one lane by {} lane and setting cap = 2 x avg. cap = {} " + "veh/hr/ln.", numberOfLanes,2 * avgCapPerLane);
+
+			for (Link link : links) {
+				double linkCapPerLane = link.getCapacity() / link.getNumberOfLanes();
+				if (link.getNumberOfLanes() > 1)
+					link.setNumberOfLanes(Math.max(1d, link.getNumberOfLanes() - numberOfLanes));
+				if (linkCapPerLane < factor * avgCapPerLane)
+					link.setCapacity(factor * avgCapPerLane * link.getNumberOfLanes());
+				else
+					link.setCapacity(linkCapPerLane * link.getNumberOfLanes());
+				link.getAttributes().putAttribute("junction", true);
+			}
+
+
+		}
 
 		return unmatched;
 	}

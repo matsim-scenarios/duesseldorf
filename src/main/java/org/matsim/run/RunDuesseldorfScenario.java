@@ -34,13 +34,17 @@ import org.matsim.application.options.SampleOptions;
 import org.matsim.application.prepare.freight.ExtractRelevantFreightTrips;
 import org.matsim.application.prepare.population.*;
 import org.matsim.application.prepare.pt.CreateTransitScheduleFromGtfs;
+import org.matsim.contrib.decongestion.DecongestionConfigGroup;
+import org.matsim.contrib.decongestion.DecongestionModule;
 import org.matsim.contrib.signals.otfvis.OTFVisWithSignalsLiveModule;
 import org.matsim.core.api.experimental.events.EventsManager;
 import org.matsim.core.config.Config;
+import org.matsim.core.config.ConfigUtils;
 import org.matsim.core.config.groups.*;
 import org.matsim.core.config.groups.PlanCalcScoreConfigGroup.ActivityParams;
 import org.matsim.core.controler.AbstractModule;
 import org.matsim.core.controler.Controler;
+import org.matsim.core.controler.OutputDirectoryLogging;
 import org.matsim.core.mobsim.qsim.AbstractQSimModule;
 import org.matsim.core.mobsim.qsim.qnetsimengine.ConfigurableQNetworkFactory;
 import org.matsim.core.mobsim.qsim.qnetsimengine.QLanesNetworkFactory;
@@ -104,8 +108,19 @@ public class RunDuesseldorfScenario extends MATSimApplication {
 	@CommandLine.Option(names = {"--no-lanes"}, defaultValue = "false", description = "Deactivate the use of lane information.")
 	private boolean noLanes;
 
-	@CommandLine.Option(names = {"--lane-capacity"}, description = "CSV file with lane capacities.", required = false)
-	private Path laneCapacity;
+	@CommandLine.Option(names = {"--link-capacity"}, description = "CSV file with lane capacities.", required = false)
+	private Path linkCapacity;
+
+	@CommandLine.Option(names = {"--lane-reduction-path"}, description = "CSV file with links that will be reduced by value of --lane-reduction " +
+			".", required = false)
+	private Path laneReductionPath;
+
+	@CommandLine.Option(names = {"--lane-reduction"},  defaultValue = "1", description = "Lanes in --lane-reduction-path will be reduced by " +
+			"lane.", required = false)
+	private double laneReduction;
+	@CommandLine.Option(names = {"--lane-reduction-cap"},  defaultValue = "2", description = "Lanes in --lane-reduction-path will have capacity increased by factor " +
+			".", required = false)
+	private double laneReductionCapacityFactor;
 
 	@CommandLine.Option(names = {"--capacity-factor"}, defaultValue = "1", description = "Scale lane capacity by this factor.")
 	private double capacityFactor;
@@ -118,6 +133,9 @@ public class RunDuesseldorfScenario extends MATSimApplication {
 
 	@CommandLine.Option(names = "--no-mc", defaultValue = "false", description = "Disable mode choice as replanning strategy.")
 	private boolean noModeChoice;
+
+	@CommandLine.Option(names = "--decongestion", defaultValue = "false", description = "Run with decongestion ")
+	private boolean decongestion;
 
 	@CommandLine.Option(names = "--intersections", defaultValue = "intersections.csv", description = "Path to the ordered csv of scored intersections.")
 	private Path intersections;
@@ -137,6 +155,17 @@ public class RunDuesseldorfScenario extends MATSimApplication {
 	}
 
 	public static void main(String[] args) {
+		// TODO: I noticed that none of the log messages for e.g. prepareScenario are being recorded,
+		// TODO: so forcing the behaviour with OutputDirectoryLogging.catchLogEntries().
+		// TODO: However, the only result is that the log now is headed by a bunch of messages like this, not the ones we need:
+		/*
+2022-02-05T06:26:40,037   OFF ?: Unmatched links: 0
+2022-02-05T06:26:40,037   OFF ?: Unmatched links: 0
+2022-02-05T06:26:40,037   OFF ?: Unmatched links: 0
+TODO: yet, it does not seem as if the 3 sites where i found a log message containing the phrase 'Unmatched links'
+TODO: are part of a loop. puzzling. pieter, feb 22
+		 */
+		OutputDirectoryLogging.catchLogEntries();
 		MATSimApplication.run(RunDuesseldorfScenario.class, args);
 	}
 
@@ -242,6 +271,39 @@ public class RunDuesseldorfScenario extends MATSimApplication {
 		config.plans().setHandlingOfPlansWithoutRoutingMode(
 				PlansConfigGroup.HandlingOfPlansWithoutRoutingMode.useMainModeIdentifier);
 
+		if (decongestion) {
+			DecongestionConfigGroup decongestionSettings = ConfigUtils.addOrGetModule(config, DecongestionConfigGroup.class);
+			decongestionSettings.setEnableDecongestionPricing(true);
+			decongestionSettings.setToleratedAverageDelaySec(30.);
+			decongestionSettings.setFractionOfIterationsToEndPriceAdjustment(1.0);
+			decongestionSettings.setFractionOfIterationsToStartPriceAdjustment(0.0);
+			decongestionSettings.setUpdatePriceInterval(1);
+			decongestionSettings.setMsa(false);
+			decongestionSettings.setTollBlendFactor(1.0);
+
+			decongestionSettings.setDecongestionApproach(DecongestionConfigGroup.DecongestionApproach.PID);
+			decongestionSettings.setKd(0.0);
+			decongestionSettings.setKi(0.0);
+			decongestionSettings.setKp(0.5);
+
+//		decongestionSettings.setDecongestionApproach( DecongestionConfigGroup.DecongestionApproach.BangBang );
+//		decongestionSettings.setInitialToll(20.);
+//		decongestionSettings.setTollAdjustment(20.);
+
+			// The BangBang approach does NOT work well for evacuation.  The PID approach does. kai, jul'18
+
+			decongestionSettings.setIntegralApproach(DecongestionConfigGroup.IntegralApproach.UnusedHeadway);
+			decongestionSettings.setIntegralApproachUnusedHeadwayFactor(10.0);
+			decongestionSettings.setIntegralApproachAverageAlpha(0.0);
+
+			decongestionSettings.setWriteOutputIteration(100);
+			addRunOption(config, "decongestion");
+			config.qsim().setInsertingWaitingVehiclesBeforeDrivingVehicles(true);
+			// means that vehicles in driveways will squeeze into the congested traffic.  Otherwise they are
+			// not picked up by the decongestion approach.  kai, aug'18
+		}
+
+
 		return config;
 	}
 
@@ -252,13 +314,28 @@ public class RunDuesseldorfScenario extends MATSimApplication {
 		Map<Id<Link>, ? extends Link> links = scenario.getNetwork().getLinks();
 		Object2DoubleMap<Pair<Id<Link>, Id<Link>>> capacities = new Object2DoubleOpenHashMap<>();
 
-		if (laneCapacity != null) {
+		if (linkCapacity != null) {
 
-			capacities = CreateNetwork.readLinkCapacities(laneCapacity);
+			capacities = CreateNetwork.readLinkCapacities(linkCapacity);
 
-			log.info("Overwrite capacities from {}, containing {} links", laneCapacity, capacities.size());
+			log.info("Overwrite capacities from {}, containing {} links", linkCapacity, capacities.size());
 
 			int n = CreateNetwork.setLinkCapacities(scenario.getNetwork(), capacities);
+
+			log.info("Unmatched links: {}", n);
+		}
+
+		if (laneReductionPath != null) {
+
+			Map<Id<Link>, Integer> laneReductionLinks;
+			laneReductionLinks = CreateNetwork.readLinkCorridors(laneReductionPath);
+
+			log.info("Reducing following set of links by {} lane and homogenizing capacities from {}, " +
+					"containing {} links, using a capacityFactor of {}", laneReduction, laneReductionPath, laneReductionLinks.size(), laneReductionCapacityFactor);
+
+			int n = CreateNetwork.reduceLinksbyOneLaneAndMultiplyPerLaneCapacity(scenario.getNetwork(), laneReductionLinks, laneReductionCapacityFactor, laneReduction);
+
+			//			new NetworkWriter(scenario.getNetwork()).write("test.xml.gz");
 
 			log.info("Unmatched links: {}", n);
 		}
@@ -266,7 +343,7 @@ public class RunDuesseldorfScenario extends MATSimApplication {
 		if (vehicleShare.av > 0 || vehicleShare.acv > 0) {
 
 			if (vehicleShare.av > 0 && vehicleShare.acv > 0)
-				 throw new IllegalArgumentException("Only one of ACV or AV can be greater 0!");
+				throw new IllegalArgumentException("Only one of ACV or AV can be greater 0!");
 
 			log.info("Applying model AV {} ACV {} to road capacities", vehicleShare.av, vehicleShare.acv);
 
@@ -285,9 +362,9 @@ public class RunDuesseldorfScenario extends MATSimApplication {
 
 				double cap = 1d;
 				if (vehicleShare.av > 0)
-					cap = factors.computeIfAbsent( (double) link.getAttributes().getAttribute("allowed_speed"), s -> AVModel.score(s, vehicleShare.av / 100d));
+					cap = factors.computeIfAbsent((double) link.getAttributes().getAttribute("allowed_speed"), s -> AVModel.score(s, vehicleShare.av / 100d));
 				else
-					cap = factors.computeIfAbsent( (double) link.getAttributes().getAttribute("allowed_speed"), s -> ACVModel.score(s, vehicleShare.acv / 100d));
+					cap = factors.computeIfAbsent((double) link.getAttributes().getAttribute("allowed_speed"), s -> ACVModel.score(s, vehicleShare.acv / 100d));
 
 				link.setCapacity(link.getCapacity() * cap);
 			}
@@ -356,6 +433,10 @@ public class RunDuesseldorfScenario extends MATSimApplication {
 
 		if (otfvis)
 			controler.addOverridingModule(new OTFVisWithSignalsLiveModule());
+
+		if (decongestion) {
+			controler.addOverridingModule(new DecongestionModule(controler.getScenario()));
+		}
 
 		controler.addOverridingModule(new AbstractModule() {
 			@Override
