@@ -51,6 +51,7 @@ import org.matsim.core.mobsim.qsim.qnetsimengine.QLanesNetworkFactory;
 import org.matsim.core.mobsim.qsim.qnetsimengine.QNetworkFactory;
 import org.matsim.core.replanning.strategies.DefaultPlanStrategiesModule;
 import org.matsim.core.router.AnalysisMainModeIdentifier;
+import org.matsim.experiment.CreateDuesseldorfGeoFencedSuperBlocksNetwork;
 import org.matsim.lanes.Lane;
 import org.matsim.lanes.LanesToLinkAssignment;
 import org.matsim.prepare.*;
@@ -136,7 +137,8 @@ public class RunDuesseldorfScenario extends MATSimApplication {
 
 	@CommandLine.Option(names = "--decongestion", defaultValue = "false", description = "Run with decongestion ")
 	private boolean decongestion;
-
+	@CommandLine.Option(names = "--superblock", description = "Run the SuperBlock network conversion using the given polygon shapefile extents")
+	private Path superblock;
 	@CommandLine.Option(names = "--intersections", defaultValue = "intersections.csv", description = "Path to the ordered csv of scored intersections.")
 	private Path intersections;
 
@@ -266,7 +268,7 @@ TODO: are part of a loop. puzzling. pieter, feb 22
 		config.vspExperimental().setVspDefaultsCheckingLevel(VspExperimentalConfigGroup.VspDefaultsCheckingLevel.info);
 		config.plansCalcRoute().setAccessEgressType(PlansCalcRouteConfigGroup.AccessEgressType.accessEgressModeToLink);
 		config.qsim().setUsingTravelTimeCheckInTeleportation(true);
-//		config.qsim().setTrafficDynamics(QSimConfigGroup.TrafficDynamics.kinematicWaves);
+		//		config.qsim().setTrafficDynamics(QSimConfigGroup.TrafficDynamics.kinematicWaves);
 
 		config.plans().setHandlingOfPlansWithoutRoutingMode(
 				PlansConfigGroup.HandlingOfPlansWithoutRoutingMode.useMainModeIdentifier);
@@ -286,9 +288,9 @@ TODO: are part of a loop. puzzling. pieter, feb 22
 			decongestionSettings.setKi(0.0);
 			decongestionSettings.setKp(0.5);
 
-//		decongestionSettings.setDecongestionApproach( DecongestionConfigGroup.DecongestionApproach.BangBang );
-//		decongestionSettings.setInitialToll(20.);
-//		decongestionSettings.setTollAdjustment(20.);
+			//		decongestionSettings.setDecongestionApproach( DecongestionConfigGroup.DecongestionApproach.BangBang );
+			//		decongestionSettings.setInitialToll(20.);
+			//		decongestionSettings.setTollAdjustment(20.);
 
 			// The BangBang approach does NOT work well for evacuation.  The PID approach does. kai, jul'18
 
@@ -314,6 +316,10 @@ TODO: are part of a loop. puzzling. pieter, feb 22
 		Map<Id<Link>, ? extends Link> links = scenario.getNetwork().getLinks();
 		Object2DoubleMap<Pair<Id<Link>, Id<Link>>> capacities = new Object2DoubleOpenHashMap<>();
 
+		if (superblock != null) {
+			CreateDuesseldorfGeoFencedSuperBlocksNetwork.performNetworkSuperBlockConversion(superblock, scenario.getNetwork());
+		}
+
 		if (linkCapacity != null) {
 
 			capacities = CreateNetwork.readLinkCapacities(linkCapacity);
@@ -333,7 +339,7 @@ TODO: are part of a loop. puzzling. pieter, feb 22
 			log.info("Reducing following set of links by {} lane and homogenizing capacities from {}, " +
 					"containing {} links, using a capacityFactor of {}", laneReduction, laneReductionPath, laneReductionLinks.size(), laneReductionCapacityFactor);
 
-			int n = CreateNetwork.reduceLinksbyOneLaneAndMultiplyPerLaneCapacity(scenario.getNetwork(), laneReductionLinks, laneReductionCapacityFactor, laneReduction);
+			int n = CreateNetwork.reduceLinkLanesAndMultiplyPerLaneCapacity(scenario.getNetwork(), laneReductionLinks, laneReductionCapacityFactor, laneReduction);
 
 			//			new NetworkWriter(scenario.getNetwork()).write("test.xml.gz");
 
