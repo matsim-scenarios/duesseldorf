@@ -26,17 +26,27 @@ public class RunEventHandler {
 		var volume = handler.getVolume();
 		var volume8 = handler.getVolume8();
 		var volume15 = handler.getVolume15();
+		var travelTimeMap = handler.getTravelTimeMap();
 
-		try (var writer = Files.newBufferedWriter(Path.of("volumes.csv")); var printer = CSVFormat.DEFAULT.withHeader("linkId", "count", "count8", "count15").print(writer)) {
-			for (var entry : volume.entrySet()) {
-				var count8 =volume8.get(entry.getKey());
-				var count15 =volume15.get(entry.getKey());
+		try (var writer = Files.newBufferedWriter(Path.of("volumes.csv")); var printer = CSVFormat.DEFAULT.withHeader("linkId", "count", "count8", "count15", "expectedTravelTime", "travelTime").print(writer)) {
+			for (var link : network.getLinks().values()) {
+				var count = volume.get(link.getId());
+				var count8 = volume8.get(link.getId());
+				var count15 = volume15.get(link.getId());
+				if (count == null) {
+					count = 0;
+				}
 				if (count8 == null) {
 					count8 = 0;
-				}if (count15 == null) {
+				}
+				if (count15 == null) {
 					count15 = 0;
 				}
-				printer.printRecord(entry.getKey(), entry.getValue(), count8, count15);
+
+				var travelTime = travelTimeMap.get(link.getId()).getAvgTravelTime();
+				var expectedTravelTime = link.getLength()/link.getFreespeed();
+
+				printer.printRecord(link.getId(), count, count8, count15, expectedTravelTime, travelTime);
 			}
 		} catch (IOException e) {
 			e.printStackTrace();
