@@ -26,17 +26,18 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 @CommandLine.Command(name = "findPersonsOnLinks", description = "Find persons, trips in the selected Plans of a Population that traverse one or more of a set of Link Ids, " + "typically provided in a CSV file.")
 public class FindPersonTripLegTraversingCorridor implements Callable<Integer>, PersonAlgorithm {
 
-	private static final String[] HEADERS = new String[]{"personId", "trip_id", "time", "corridor"};
+	private static final String[] HEADERS = new String[]{"personId", "trip_id", "time"};
 	List<PersonTripLegEntry> result = new ArrayList<>();
 	@CommandLine.Parameters(arity = "1", paramLabel = "INPUT_PLANS", description = "Input plans file")
 	private Path plans;
-	@CommandLine.Parameters(arity = "2", paramLabel = "LINK_IDS", description = "Input CSV with link Ids")
+	@CommandLine.Parameters(arity = "1", paramLabel = "LINK_IDS", description = "Input CSV with link Ids")
 	private Path corridor;
-	@CommandLine.Parameters(arity = "3", paramLabel = "OUTPUT_CSV", description = "Output CSV path")
+	@CommandLine.Parameters(arity = "1", paramLabel = "OUTPUT_CSV", description = "Output CSV path")
 	private Path output;
 
 	private Map<Id<Link>, Integer> linkCorridors;
@@ -70,9 +71,19 @@ public class FindPersonTripLegTraversingCorridor implements Callable<Integer>, P
 				Leg leg = (Leg) planElement;
 				if (leg.getMode().equals(TransportMode.car)) {
 					NetworkRoute route = (NetworkRoute) leg.getRoute();
-					if (linkCorridors.containsKey(route.getLinkIds()) || linkCorridors.containsKey(route.getEndLinkId()) || linkCorridors.containsKey(route.getEndLinkId())) {
+					if(route.getLinkIds().size()==0)
+						return;
+					Stream<Boolean> booleanStream = route.getLinkIds().stream().map(linkId -> linkCorridors.containsKey(linkId));
+					boolean aBoolean = booleanStream.reduce((b1, b2) -> b1 || b2).get();
+					if (aBoolean) {
+						result.add(new PersonTripLegEntry(person.getId(), tripId.get(), leg.getDepartureTime().orElse(lastTime.get())));
+					} else if (linkCorridors.containsKey(route.getEndLinkId())) {
+						result.add(new PersonTripLegEntry(person.getId(), tripId.get(), leg.getDepartureTime().orElse(lastTime.get())));
+					} else if (linkCorridors.containsKey(route.getEndLinkId())) {
 						result.add(new PersonTripLegEntry(person.getId(), tripId.get(), leg.getDepartureTime().orElse(lastTime.get())));
 					}
+
+
 				}
 			}
 		});
@@ -84,6 +95,7 @@ public class FindPersonTripLegTraversingCorridor implements Callable<Integer>, P
 			for (PersonTripLegEntry p : result) {
 				printer.printRecord(p.personId, p.trip_id, p.time);
 			}
+			printer.flush();
 		}
 	}
 
@@ -92,9 +104,10 @@ public class FindPersonTripLegTraversingCorridor implements Callable<Integer>, P
 		final String trip_id;
 		final double time;
 
+
 		private PersonTripLegEntry(Id<Person> personId, int trip_id, double time) {
 			this.personId = personId.toString();
-			this.trip_id = this.personId + trip_id;
+			this.trip_id = this.personId + "_" + trip_id;
 			this.time = time;
 		}
 	}
