@@ -329,13 +329,16 @@ TODO: are part of a loop. puzzling. pieter, feb 22
 			capacities = CreateNetwork.readLinkCapacities(linkCapacity);
 
 			log.info("Overwrite capacities from {}, containing {} links", linkCapacity, capacities.size());
-			Set<Id<Link>> filteredIds = null;
+
 			if (linkCapacityFilter != null) {
-				log.info("Limiting capacity change to links in this {}", linkCapacityFilter.toString());
-				filteredIds = CreateNetwork.readLinkIds(linkCapacityFilter);
+				log.info("Limiting capacity change to links in this {}", linkCapacityFilter);
+				Set<Id<Link>> filteredIds = CreateNetwork.readLinkIds(linkCapacityFilter);
+				capacities.keySet().removeIf(e -> !filteredIds.contains(e.key()));
+
+				log.info("Filtered {} links", capacities.size());
 			}
 
-			int n = CreateNetwork.setLinkCapacities(scenario.getNetwork(), capacities, filteredIds);
+			int n = CreateNetwork.setLinkCapacities(scenario.getNetwork(), capacities);
 
 			log.info("Unmatched links: {}", n);
 		}
@@ -465,7 +468,7 @@ TODO: are part of a loop. puzzling. pieter, feb 22
 	@Override
 	protected void prepareControler(Controler controler) {
 		//as our runs frequently change network
-		String outputPath = controler.getControlerIO().getOutputPath();
+		// String outputPath = controler.getControlerIO().getOutputPath();
 
 		if (otfvis)
 			controler.addOverridingModule(new OTFVisWithSignalsLiveModule());

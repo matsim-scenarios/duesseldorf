@@ -218,7 +218,7 @@ public final class CreateNetwork implements MATSimAppCommand {
 	 *
 	 * @return number of links from file that are not in the network.
 	 */
-	public static int setLinkCapacities(Network network, Object2DoubleMap<Pair<Id<Link>, Id<Link>>> map, Set<Id<Link>> filteredLinks) {
+	public static int setLinkCapacities(Network network, Object2DoubleMap<Pair<Id<Link>, Id<Link>>> map) {
 
 		Object2DoubleMap<Id<Link>> linkCapacities = new Object2DoubleOpenHashMap<>();
 
@@ -230,9 +230,6 @@ public final class CreateNetwork implements MATSimAppCommand {
 		int unmatched = 0;
 
 		for (Object2DoubleMap.Entry<Id<Link>> e : linkCapacities.object2DoubleEntrySet()) {
-			if (filteredLinks != null && !filteredLinks.contains(e.getKey())) //only allow processing on filtered links if provided - pieter feb 22
-				continue;
-
 			Link link = network.getLinks().get(e.getKey());
 
 			if (link != null) {
@@ -539,7 +536,7 @@ public final class CreateNetwork implements MATSimAppCommand {
 
 			log.info("Read lane capacities from {}, containing {} links", capacities, map.size());
 
-			int n = setLinkCapacities(network, map, null);
+			int n = setLinkCapacities(network, map);
 
 			log.info("Unmatched links: {}", n);
 
