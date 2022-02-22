@@ -47,11 +47,7 @@ import static org.matsim.run.TurnDependentFlowEfficiencyCalculator.ATTR_TURN_EFF
  *
  * @author rakow
  */
-@CommandLine.Command(
-		name = "network",
-		description = "Create MATSim network from OSM data",
-		showDefaultValues = true
-)
+@CommandLine.Command(name = "network", description = "Create MATSim network from OSM data", showDefaultValues = true)
 public final class CreateNetwork implements MATSimAppCommand {
 
 	private static final Logger log = LogManager.getLogger(CreateNetwork.class);
@@ -67,8 +63,7 @@ public final class CreateNetwork implements MATSimAppCommand {
 	@CommandLine.Option(names = "--output", description = "Output xml file", defaultValue = "scenarios/input/duesseldorf-" + VERSION + "-network.xml.gz")
 	private Path output;
 
-	@CommandLine.Option(names = "--shp", description = "Shape file used for filtering",
-			defaultValue = "../../shared-svn/komodnext/matsim-input-files/duesseldorf-senozon/dilutionArea/dilutionArea.shp")
+	@CommandLine.Option(names = "--shp", description = "Shape file used for filtering", defaultValue = "../../shared-svn/komodnext/matsim-input-files/duesseldorf-senozon/dilutionArea/dilutionArea.shp")
 	private Path shapeFile;
 
 	@CommandLine.Option(names = "--from-osm", description = "Import from OSM without lane information", defaultValue = "false")
@@ -79,154 +74,6 @@ public final class CreateNetwork implements MATSimAppCommand {
 
 	public static void main(String[] args) {
 		System.exit(new CommandLine(new CreateNetwork()).execute(args));
-	}
-
-	@Override
-	public Integer call() throws Exception {
-
-		if (fromOSM) {
-
-			CoordinateTransformation ct = TransformationFactory.getCoordinateTransformation(TransformationFactory.WGS84, RunDuesseldorfScenario.COORDINATE_SYSTEM);
-
-			Network network = new SupersonicOsmNetworkReader.Builder()
-					.setCoordinateTransformation(ct)
-					.setIncludeLinkAtCoordWithHierarchy((coord, hierachyLevel) ->
-							hierachyLevel <= LinkProperties.LEVEL_RESIDENTIAL &&
-									coord.getX() >= RunDuesseldorfScenario.X_EXTENT[0] && coord.getX() <= RunDuesseldorfScenario.X_EXTENT[1] &&
-									coord.getY() >= RunDuesseldorfScenario.Y_EXTENT[0] && coord.getY() <= RunDuesseldorfScenario.Y_EXTENT[1]
-					)
-
-					.setAfterLinkCreated((link, osmTags, isReverse) -> link.setAllowedModes(new HashSet<>(Arrays.asList(TransportMode.car, TransportMode.bike, TransportMode.ride))))
-					.build()
-					.read(input.get(0));
-
-			new NetworkWriter(network).write(output.toAbsolutePath().toString());
-
-			return 0;
-		}
-
-		SumoNetworkConverter converter = SumoNetworkConverter.newInstance(input, output, shapeFile, "EPSG:32632", RunDuesseldorfScenario.COORDINATE_SYSTEM);
-
-		Network network = NetworkUtils.createNetwork();
-		Lanes lanes = LanesUtils.createLanesContainer();
-
-		SumoNetworkHandler handler = converter.convert(network, lanes);
-
-		converter.calculateLaneCapacities(network, lanes);
-
-		// This needs to run without errors, otherwise network is broken
-		network.getLinks().values().forEach(link -> {
-			LanesToLinkAssignment l2l = lanes.getLanesToLinkAssignments().get(link.getId());
-			if (l2l != null)
-				LanesUtils.createLanes(link, l2l);
-		});
-
-		if (capacities != null) {
-
-			Object2DoubleMap<Pair<Id<Link>, Id<Link>>> map = readLinkCapacities(capacities);
-
-			log.info("Read lane capacities from {}, containing {} links", capacities, map.size());
-
-			int n = setLinkCapacities(network, map);
-
-			log.info("Unmatched links: {}", n);
-
-		}
-
-		applyNetworkCorrections(network);
-
-		new NetworkWriter(network).write(output.toAbsolutePath().toString());
-		new LanesWriter(lanes).write(output.toAbsolutePath().toString().replace(".xml", "-lanes.xml"));
-
-		converter.writeGeometry(handler, output.toAbsolutePath().toString().replace(".xml", "-linkGeometries.csv").replace(".gz", ""));
-
-		return 0;
-	}
-
-	/**
-	 * Correct erroneous data from osm. Most common error is wrong number of lanes or wrong capacities.
-	 */
-	private void applyNetworkCorrections(Network network) {
-
-		Map<Id<Link>, ? extends Link> links = network.getLinks();
-
-		// Double lanes for these links
-		List<String> incorrectList = Lists.newArrayList(
-				"-40686598#1",
-				"40686598#0",
-				"25494723",
-				"7653201",
-				"340415235",
-				"34380173#0",
-				"85943638",
-				"18708266",
-				"38873048",
-				"-705697329#0",
-				"-367884913",
-				"93248576",
-				"289987955#0",//Breitestrasse / Heinrich Heine Allee links
-				"289987955#2",
-				"4683309#0",
-				"145433835",
-				"46146378#2",
-				"33381974",
-				"621308781#0",
-				"145503631#0",
-				"149902601",
-				"147614221",
-				"147614263",
-				"420530117", // Kasernstrasse
-				"40348110#4",
-				"40348110#2",
-				"40348110#0",
-				"142697893#0",
-				"223447139", // Oststrasse
-				"-223447139",
-				"145424749#0",
-				"-145424749#2",
-				"149291901#0", // Karl-Rudolfstrasse
-				"85388142#0",
-				"144531009#0",
-				"23157292#0", // Corneliusstrasse
-				"207108052#0",
-				"219116943#0",
-				"239250010#2", // Brunnenstrasse
-				"30694311#0",
-				"432816762"
-		);
-
-		//dump it into a set in case we accidentally repeat an id in the list
-		Set<String> incorrect = new HashSet<>();
-		incorrect.addAll(incorrectList);
-
-		for (String l : incorrect) {
-			Link link = links.get(Id.createLinkId(l));
-
-			if (link == null || link.getNumberOfLanes() > 1) {
-				log.warn("Lanes for {} not modified", l);
-				continue;
-			}
-
-			link.setNumberOfLanes(link.getNumberOfLanes() * 2);
-			link.setCapacity(link.getCapacity() * 2);
-		}
-
-		// Fix the capacities of some links that are implausible in OSM
-		increaseCapacity(links, "314648993#0", 6000);
-		increaseCapacity(links, "239242545", 3000);
-		increaseCapacity(links, "800035681", 3000);
-		increaseCapacity(links, "145178328", 4000);
-		increaseCapacity(links, "157381200#0", 4000);
-		increaseCapacity(links, "145178328", 4000);
-		increaseCapacity(links, "45252320", 4000);
-		increaseCapacity(links, "375678205#0", 1200);
-		increaseCapacity(links, "40816222#0", 1200);
-		increaseCapacity(links, "233307305#0", 1200);
-		increaseCapacity(links, "23157292#0", 1200);
-		increaseCapacity(links, "-33473202#1", 1200);
-		increaseCapacity(links, "26014655#0", 1200);
-		increaseCapacity(links, "32523335#5", 1200);
-
 	}
 
 	private static void increaseCapacity(Map<Id<Link>, ? extends Link> links, String id, double capacity) {
@@ -241,7 +88,6 @@ public final class CreateNetwork implements MATSimAppCommand {
 		link.setCapacity(capacity);
 	}
 
-
 	/**
 	 * Read lane capacities from csv file.
 	 *
@@ -251,8 +97,7 @@ public final class CreateNetwork implements MATSimAppCommand {
 
 		Object2DoubleMap<Triple<Id<Link>, Id<Link>, Id<Lane>>> result = new Object2DoubleOpenHashMap<>();
 
-		try (CSVParser parser = new CSVParser(IOUtils.getBufferedReader(input.toString()),
-				CSVFormat.DEFAULT.withDelimiter(',').withFirstRecordAsHeader())) {
+		try (CSVParser parser = new CSVParser(IOUtils.getBufferedReader(input.toString()), CSVFormat.DEFAULT.withDelimiter(',').withFirstRecordAsHeader())) {
 
 			for (CSVRecord record : parser) {
 
@@ -282,8 +127,7 @@ public final class CreateNetwork implements MATSimAppCommand {
 
 		Object2DoubleMap<Pair<Id<Link>, Id<Link>>> result = new Object2DoubleOpenHashMap<>();
 
-		try (CSVParser parser = new CSVParser(IOUtils.getBufferedReader(input.toString()),
-				CSVFormat.DEFAULT.withDelimiter(',').withFirstRecordAsHeader())) {
+		try (CSVParser parser = new CSVParser(IOUtils.getBufferedReader(input.toString()), CSVFormat.DEFAULT.withDelimiter(',').withFirstRecordAsHeader())) {
 
 			for (CSVRecord record : parser) {
 
@@ -311,14 +155,38 @@ public final class CreateNetwork implements MATSimAppCommand {
 
 		Map<Id<Link>, Integer> result = new HashMap<>();
 
-		try (CSVParser parser = new CSVParser(IOUtils.getBufferedReader(input.toString()),
-				CSVFormat.DEFAULT.withDelimiter(',').withFirstRecordAsHeader())) {
+		try (CSVParser parser = new CSVParser(IOUtils.getBufferedReader(input.toString()), CSVFormat.DEFAULT.withDelimiter(',').withFirstRecordAsHeader())) {
 
 			for (CSVRecord record : parser) {
 
 				Id<Link> linkId = Id.create(record.get("ID"), Link.class);
 
 				result.put(linkId, Integer.parseInt(record.get("corridor")));
+
+			}
+
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
+		return result;
+	}
+
+	/**
+	 * Read list of link ids for misc purposes
+	 *
+	 * @return set of link ids
+	 */
+	public static Set<Id<Link>> readLinkIds(Path input) {
+
+		Set<Id<Link>> result = new HashSet<>();
+
+		try (CSVParser parser = new CSVParser(IOUtils.getBufferedReader(input.toString()), CSVFormat.DEFAULT.withDelimiter(',').withFirstRecordAsHeader())) {
+
+			for (CSVRecord record : parser) {
+
+				Id<Link> linkId = Id.create(record.get("ID"), Link.class);
+
+				result.add(linkId);
 
 			}
 
@@ -346,9 +214,11 @@ public final class CreateNetwork implements MATSimAppCommand {
 	/**
 	 * Use provided link capacities and apply them to the network.
 	 *
+	 * optionally run it only for a set of links provided.
+	 *
 	 * @return number of links from file that are not in the network.
 	 */
-	public static int setLinkCapacities(Network network, Object2DoubleMap<Pair<Id<Link>, Id<Link>>> map) {
+	public static int setLinkCapacities(Network network, Object2DoubleMap<Pair<Id<Link>, Id<Link>>> map, Set<Id<Link>> filteredLinks) {
 
 		Object2DoubleMap<Id<Link>> linkCapacities = new Object2DoubleOpenHashMap<>();
 
@@ -360,6 +230,8 @@ public final class CreateNetwork implements MATSimAppCommand {
 		int unmatched = 0;
 
 		for (Object2DoubleMap.Entry<Id<Link>> e : linkCapacities.object2DoubleEntrySet()) {
+			if (filteredLinks != null && !filteredLinks.contains(e.getKey())) //only allow processing on filtered links if provided - pieter feb 22
+				continue;
 
 			Link link = network.getLinks().get(e.getKey());
 
@@ -499,8 +371,8 @@ public final class CreateNetwork implements MATSimAppCommand {
 	}
 
 	/**
-	 * Use provided lane capacities, to calculate aggregated capacities for all links.
-	 * This does not modify lane capacities.
+	 * Use provided lane capacities, to calculate aggregated capacities for all links. This does not modify lane
+	 * capacities.
 	 *
 	 * @return number of links from file that are not in the network.
 	 */
@@ -596,10 +468,12 @@ public final class CreateNetwork implements MATSimAppCommand {
 		for (Object2DoubleMap.Entry<Triple<Id<Link>, Id<Link>, Id<Lane>>> e : map.object2DoubleEntrySet()) {
 
 			LanesToLinkAssignment l2l = l2ls.get(e.getKey().getLeft());
-			if (l2l == null) continue;
+			if (l2l == null)
+				continue;
 
 			Lane lane = l2l.getLanes().get(e.getKey().getRight());
-			if (lane == null) continue;
+			if (lane == null)
+				continue;
 
 			Id<Link> toLink = e.getKey().getMiddle();
 			getTurnEfficiencyMap(lane).put(toLink.toString(), String.valueOf(e.getDoubleValue() / lane.getCapacityVehiclesPerHour()));
@@ -625,6 +499,110 @@ public final class CreateNetwork implements MATSimAppCommand {
 		}
 
 		return cap;
+	}
+
+	@Override
+	public Integer call() throws Exception {
+
+		if (fromOSM) {
+
+			CoordinateTransformation ct = TransformationFactory.getCoordinateTransformation(TransformationFactory.WGS84, RunDuesseldorfScenario.COORDINATE_SYSTEM);
+
+			Network network = new SupersonicOsmNetworkReader.Builder().setCoordinateTransformation(ct).setIncludeLinkAtCoordWithHierarchy((coord, hierachyLevel) -> hierachyLevel <= LinkProperties.LEVEL_RESIDENTIAL && coord.getX() >= RunDuesseldorfScenario.X_EXTENT[0] && coord.getX() <= RunDuesseldorfScenario.X_EXTENT[1] && coord.getY() >= RunDuesseldorfScenario.Y_EXTENT[0] && coord.getY() <= RunDuesseldorfScenario.Y_EXTENT[1])
+
+					.setAfterLinkCreated((link, osmTags, isReverse) -> link.setAllowedModes(new HashSet<>(Arrays.asList(TransportMode.car, TransportMode.bike, TransportMode.ride)))).build().read(input.get(0));
+
+			new NetworkWriter(network).write(output.toAbsolutePath().toString());
+
+			return 0;
+		}
+
+		SumoNetworkConverter converter = SumoNetworkConverter.newInstance(input, output, shapeFile, "EPSG:32632", RunDuesseldorfScenario.COORDINATE_SYSTEM);
+
+		Network network = NetworkUtils.createNetwork();
+		Lanes lanes = LanesUtils.createLanesContainer();
+
+		SumoNetworkHandler handler = converter.convert(network, lanes);
+
+		converter.calculateLaneCapacities(network, lanes);
+
+		// This needs to run without errors, otherwise network is broken
+		network.getLinks().values().forEach(link -> {
+			LanesToLinkAssignment l2l = lanes.getLanesToLinkAssignments().get(link.getId());
+			if (l2l != null)
+				LanesUtils.createLanes(link, l2l);
+		});
+
+		if (capacities != null) {
+
+			Object2DoubleMap<Pair<Id<Link>, Id<Link>>> map = readLinkCapacities(capacities);
+
+			log.info("Read lane capacities from {}, containing {} links", capacities, map.size());
+
+			int n = setLinkCapacities(network, map, null);
+
+			log.info("Unmatched links: {}", n);
+
+		}
+
+		applyNetworkCorrections(network);
+
+		new NetworkWriter(network).write(output.toAbsolutePath().toString());
+		new LanesWriter(lanes).write(output.toAbsolutePath().toString().replace(".xml", "-lanes.xml"));
+
+		converter.writeGeometry(handler, output.toAbsolutePath().toString().replace(".xml", "-linkGeometries.csv").replace(".gz", ""));
+
+		return 0;
+	}
+
+	/**
+	 * Correct erroneous data from osm. Most common error is wrong number of lanes or wrong capacities.
+	 */
+	private void applyNetworkCorrections(Network network) {
+
+		Map<Id<Link>, ? extends Link> links = network.getLinks();
+
+		// Double lanes for these links
+		List<String> incorrectList = Lists.newArrayList("-40686598#1", "40686598#0", "25494723", "7653201", "340415235", "34380173#0", "85943638", "18708266", "38873048", "-705697329#0", "-367884913", "93248576", "289987955#0",//Breitestrasse / Heinrich Heine Allee links
+				"289987955#2", "4683309#0", "145433835", "46146378#2", "33381974", "621308781#0", "145503631#0", "149902601", "147614221", "147614263", "420530117", // Kasernstrasse
+				"40348110#4", "40348110#2", "40348110#0", "142697893#0", "223447139", // Oststrasse
+				"-223447139", "145424749#0", "-145424749#2", "149291901#0", // Karl-Rudolfstrasse
+				"85388142#0", "144531009#0", "23157292#0", // Corneliusstrasse
+				"207108052#0", "219116943#0", "239250010#2", // Brunnenstrasse
+				"30694311#0", "432816762");
+
+		//dump it into a set in case we accidentally repeat an id in the list
+		Set<String> incorrect = new HashSet<>();
+		incorrect.addAll(incorrectList);
+
+		for (String l : incorrect) {
+			Link link = links.get(Id.createLinkId(l));
+
+			if (link == null || link.getNumberOfLanes() > 1) {
+				log.warn("Lanes for {} not modified", l);
+				continue;
+			}
+
+			link.setNumberOfLanes(link.getNumberOfLanes() * 2);
+			link.setCapacity(link.getCapacity() * 2);
+		}
+
+		// Fix the capacities of some links that are implausible in OSM
+		increaseCapacity(links, "314648993#0", 6000);
+		increaseCapacity(links, "239242545", 3000);
+		increaseCapacity(links, "800035681", 3000);
+		increaseCapacity(links, "145178328", 4000);
+		increaseCapacity(links, "157381200#0", 4000);
+		increaseCapacity(links, "145178328", 4000);
+		increaseCapacity(links, "45252320", 4000);
+		increaseCapacity(links, "375678205#0", 1200);
+		increaseCapacity(links, "40816222#0", 1200);
+		increaseCapacity(links, "233307305#0", 1200);
+		increaseCapacity(links, "23157292#0", 1200);
+		increaseCapacity(links, "-33473202#1", 1200);
+		increaseCapacity(links, "26014655#0", 1200);
+		increaseCapacity(links, "32523335#5", 1200);
+
 	}
 
 }

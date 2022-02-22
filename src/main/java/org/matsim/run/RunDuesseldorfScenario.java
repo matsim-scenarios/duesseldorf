@@ -49,8 +49,10 @@ import org.matsim.core.mobsim.qsim.AbstractQSimModule;
 import org.matsim.core.mobsim.qsim.qnetsimengine.ConfigurableQNetworkFactory;
 import org.matsim.core.mobsim.qsim.qnetsimengine.QLanesNetworkFactory;
 import org.matsim.core.mobsim.qsim.qnetsimengine.QNetworkFactory;
+import org.matsim.core.network.io.NetworkWriter;
 import org.matsim.core.replanning.strategies.DefaultPlanStrategiesModule;
 import org.matsim.core.router.AnalysisMainModeIdentifier;
+import org.matsim.core.utils.io.IOUtils;
 import org.matsim.experiment.CreateDuesseldorfGeoFencedSuperBlocksNetwork;
 import org.matsim.lanes.Lane;
 import org.matsim.lanes.LanesToLinkAssignment;
@@ -111,9 +113,11 @@ public class RunDuesseldorfScenario extends MATSimApplication {
 
 	@CommandLine.Option(names = {"--link-capacity"}, description = "CSV file with lane capacities.", required = false)
 	private Path linkCapacity;
-
-	@CommandLine.Option(names = {"--lane-reduction-path"}, description = "CSV file with links that will be reduced by value of --lane-reduction " +
-			".", required = false)
+	@CommandLine.Option(names = {"--link-capacity-filter"}, description = "CSV file with links to filter the provided link capacities from SUMO.", required = false)
+	private Path linkCapacityFilter;
+	@CommandLine.Option(names = {"--remove-car-from-links"}, description = "CSV file with links to exclude car and freight.", required = false)
+	private Path carFilter;
+	@CommandLine.Option(names = {"--lane-reduction-path"}, description = "CSV file with links that will be reduced by value of --lane-reduction " + ".", required = false)
 	private Path laneReductionPath;
 
 	@CommandLine.Option(names = {"--lane-reduction"},  defaultValue = "1", description = "Lanes in --lane-reduction-path will be reduced by " +
@@ -325,12 +329,34 @@ TODO: are part of a loop. puzzling. pieter, feb 22
 			capacities = CreateNetwork.readLinkCapacities(linkCapacity);
 
 			log.info("Overwrite capacities from {}, containing {} links", linkCapacity, capacities.size());
+			Set<Id<Link>> filteredIds = null;
+			if (linkCapacityFilter != null) {
+				log.info("Limiting capacity change to links in this {}", linkCapacityFilter.toString());
+				filteredIds = CreateNetwork.readLinkIds(linkCapacityFilter);
+			}
 
-			int n = CreateNetwork.setLinkCapacities(scenario.getNetwork(), capacities);
+			int n = CreateNetwork.setLinkCapacities(scenario.getNetwork(), capacities, filteredIds);
 
 			log.info("Unmatched links: {}", n);
 		}
 
+
+		if (carFilter != null) {
+			log.info("Reading links to prevent car traffic from {}", carFilter.toString());
+			Set<Id<Link>> linkIds = CreateNetwork.readLinkIds(carFilter);
+			linkIds.forEach(linkId -> {
+				Link link = scenario.getNetwork().getLinks().get(linkId);
+				link.setFreespeed(15 / 3.6);
+				link.setCapacity(300);
+				//this code doesnt work as it produces an unconnected network
+/*				Set<String> allowedModes = new HashSet<>();
+				allowedModes.addAll(link.getAllowedModes());
+				allowedModes.remove("freight");
+				allowedModes.remove("car");
+				link.setAllowedModes(allowedModes);*/
+				log.info("Reducing the speed of link {} to cycling speed, making it unpopular.", linkId.toString());
+			});
+		}
 		if (laneReductionPath != null) {
 
 			Map<Id<Link>, Integer> laneReductionLinks;
@@ -431,11 +457,15 @@ TODO: are part of a loop. puzzling. pieter, feb 22
 				link.setAllowedModes(newModes);
 			}
 		}
+//				new NetworkWriter(scenario.getNetwork()).write("test.xml.gz");
+		log.info("Done pre-processing scenario");
 
 	}
 
 	@Override
 	protected void prepareControler(Controler controler) {
+		//as our runs frequently change network
+		String outputPath = controler.getControlerIO().getOutputPath();
 
 		if (otfvis)
 			controler.addOverridingModule(new OTFVisWithSignalsLiveModule());
@@ -443,7 +473,6 @@ TODO: are part of a loop. puzzling. pieter, feb 22
 		if (decongestion) {
 			controler.addOverridingModule(new DecongestionModule(controler.getScenario()));
 		}
-
 		controler.addOverridingModule(new AbstractModule() {
 			@Override
 			public void install() {
