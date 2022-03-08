@@ -1,7 +1,7 @@
 {
   "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
   "width": "container",
-  "data": {"url": "http://localhost:8000/base/py_rel_tt.csv"},
+  "data": {"url": "http://localhost:8000/base/rel_tt_time.csv"},
   "mark": "line",
   "encoding": {
     "x": {
@@ -25,4 +25,3 @@
     }
   }
 }
-

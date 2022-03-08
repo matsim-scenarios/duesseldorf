@@ -1,0 +1,17 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "data": {"url": "http://localhost:8000/base/sim_srv.csv"},
+  "mark": "bar",
+  "width": 400,
+  "height": 200,
+  "encoding": {
+    "column": {"field": "source", "title": "Verkehrsmittelwahl nach Entfernungsklassen"},
+    "x": {"field": "pct", "type": "quantitative", "title": "Anteil"},
+    "y": {"field": "dist_group",
+      "sort": [ "10000+","5000 - 10000", "3000 - 5000", "1000 - 3000", "0 - 1000"],
+      "title": "Entfernungsklassen"},
+    "color": {"field": "main_mode", "type": "nominal", "title": "Hauptmode" ,
+      "scale": {"domain": ["bike", "car", "pt", "walk"],
+        "range": ["#0f5eca ", "#fc8712", "#37ab17", "#d00000"]}}
+  }
+}

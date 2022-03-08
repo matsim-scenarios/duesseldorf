@@ -1,7 +1,7 @@
 version: 1
 
 header:
-  tab: "AVs & ACVs"
+  tab: "System-wide effects"
   title: Short- and long-term effects of AVs and ACVs
   description: "This page shows the potential effects when introducing automated (AVs) and autonomous connected vehicles (ACVs),
                 together with intelligent infrastructure uniformly and unrestricted to the scenario. We simulated short-term effects by only allowing agents
@@ -10,8 +10,8 @@ header:
 layout:
   st:
     - type: "text"
-      title: "Short-term effects"
-      width: 3
+      title: "Short-term travel time savings"
+      width: 4
       props:
         file: scenarios/short-term.md
 
@@ -20,23 +20,42 @@ layout:
       description: "Shown are the mean relative travel time over all congested link in the base scenario throughout the day."
       width: 7
       props:
-        config: scenarios/rel_tt.json
+        config: scenarios/rel_tt_time.json
 
   lt:
     - type: "text"
-      title: "Long-term effects"
+      title: "Long-term effects with Mode-choice"
       width: 30
       props:
         file: scenarios/long-term.md
 
     - type: "sankey"
-      title: "Mode-Shift 50% ACVs"
+      title: "Mode-Shift Mid-term"
       width: 35
       props:
-        csv: shift_acv50.csv
+        csv: shift_mt.csv
 
     - type: "sankey"
-      title: "Mode-Shift 100% ACVs"
+      title: "Mode-Shift Distant future"
       width: 35
       props:
-        csv: shift_acv100.csv
+        csv: shift_lt.csv
+
+  emissions:
+    - type: text
+        title: "Difference in total CO2 emissions: base to it"
+        description: "The figure shows the difference in total CO2 emissions compared to the base scenario."
+        props:
+          file: flow/it.PNG
+
+    - type: text
+        title: "Difference in total CO2 emissions: base to mt"
+        description: "The figure shows the difference in total CO2 emissions compared to the base scenario."
+        props:
+          file: flow/mt.PNG
+
+    - type: text
+        title: "Difference in total CO2 emissions: base to st"
+        description: "The figure shows the difference in total CO2 emissions compared to the base scenario."
+        props:
+          file: flow/st.PNG
