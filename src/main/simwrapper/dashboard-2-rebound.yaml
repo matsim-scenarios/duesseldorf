@@ -43,19 +43,19 @@ layout:
 
   emissions:
     - type: text
-        title: "Difference in total CO2 emissions: base to it"
-        description: "The figure shows the difference in total CO2 emissions compared to the base scenario."
-        props:
-          file: flow/it.PNG
+      title: "Difference in total CO2 emissions: base to it"
+      description: "The figure shows the difference in total CO2 emissions compared to the base scenario."
+      props:
+        file: flow/it_qgis.md
 
     - type: text
-        title: "Difference in total CO2 emissions: base to mt"
-        description: "The figure shows the difference in total CO2 emissions compared to the base scenario."
-        props:
-          file: flow/mt.PNG
+      title: "Difference in total CO2 emissions: base to mt"
+      description: "The figure shows the difference in total CO2 emissions compared to the base scenario."
+      props:
+        file: flow/mt_qgis.md
 
     - type: text
-        title: "Difference in total CO2 emissions: base to st"
-        description: "The figure shows the difference in total CO2 emissions compared to the base scenario."
-        props:
-          file: flow/st.PNG
+      title: "Difference in total CO2 emissions: base to st"
+      description: "The figure shows the difference in total CO2 emissions compared to the base scenario."
+      props:
+        file: flow/st_qgis.md

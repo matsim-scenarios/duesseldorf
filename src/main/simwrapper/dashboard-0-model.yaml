@@ -52,5 +52,7 @@ layout:
     - type: vega
       title: "Distance Classes"
       description: "comparison of the distance classes by mode"
+      width: 10
+      height: 10
       props:
         config: vega/dis-vega.json

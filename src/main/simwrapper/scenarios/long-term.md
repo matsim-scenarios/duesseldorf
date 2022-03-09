@@ -1,9 +1,11 @@
 
 
-The following table shows the reduction in time spent for traveling in car:
+The following table shows the number of car trips and driven km and hours compared to tbe base case:
 
-| ACV  share     | 50%     | 100%    |
-|----------------|---------|---------|
-| Car trips      |  +3.2%  | +11.7%  |
-| Vehicle-km     |  +3.3%  | +10.6%  |
-| Vehicle-hours  |  +8.2%  | +12.2%  |
+|                | Near fut. &nbsp;  | Mid-term &nbsp; | Distant fut. &nbsp;
+|----------------|-------------------|--------------|-------------------|
+| Car trips      |  -1.2%  |  +1.7%  | +7.1%   |
+| Vehicle-km     |  -1.0%  |  +1.6%  | +6.0%  |
+| Vehicle-hours  |  -0.8%  |  +0.7%  | +3.8%  |
+
+Here mode-choice has been enabled.
