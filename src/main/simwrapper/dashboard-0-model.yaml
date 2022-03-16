@@ -51,8 +51,14 @@ layout:
   row2:
     - type: vega
       title: "Distance Classes"
-      description: "comparison of the distance classes by mode"
-      width: 10
-      height: 10
+      height: 6
+      description: "Comparison of the distance classes by mode"
       props:
         config: vega/dis-vega.json
+
+    - type: vega
+      title: "Validate"
+      height: 6
+      description: "Validate travel time"
+      props:
+        config: vega/validate-vega.json

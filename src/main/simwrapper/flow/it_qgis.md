@@ -1,1 +1,0 @@
-![Figure](it.PNG)

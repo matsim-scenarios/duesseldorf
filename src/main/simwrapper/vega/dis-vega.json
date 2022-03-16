@@ -1,9 +1,9 @@
 {
   "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-  "data": {"url": "sim_srv.csv"},
+  "data": {"url": "http://localhost:8000/vega/sim_srv.csv"},
   "mark": "bar",
-  "width": 10,
-  "height": 10,
+  "width": "container",
+  "height": 200,
   "encoding": {
     "column": {"field": "source", "title": "Verkehrsmittelwahl nach Entfernungsklassen"},
     "x": {"field": "pct", "type": "quantitative", "title": "Anteil"},
